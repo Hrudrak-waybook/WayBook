@@ -2214,7 +2214,7 @@ local function BuildOptionsUI()
     local template = BackdropTemplateMixin and "BackdropTemplate" or nil
 
     optionsFrame = CreateFrame("Frame", "WayBookOptionsFrame", UIParent, template)
-    optionsFrame:SetSize(330, 592)
+    optionsFrame:SetSize(330, 616)
     optionsFrame:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -2497,7 +2497,7 @@ local function BuildOptionsUI()
 
     local exportBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     exportBtn:SetSize(140, 22)
-    exportBtn:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 50)
+    exportBtn:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 74)
     exportBtn:SetText("Export Waypoints")
     exportBtn:SetScript("OnClick", function() ToggleExport() end)
     exportBtn:SetScript("OnEnter", function(self)
@@ -2513,7 +2513,7 @@ local function BuildOptionsUI()
 
     local resetBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     resetBtn:SetSize(140, 22)
-    resetBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 20, 22)
+    resetBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 20, 46)
     resetBtn:SetText("Restore window")
     resetBtn:SetScript("OnClick", function()
         WayBookDB.point = nil
@@ -2524,7 +2524,7 @@ local function BuildOptionsUI()
 
     local defaultsBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     defaultsBtn:SetSize(120, 22)
-    defaultsBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -20, 22)
+    defaultsBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -20, 46)
     defaultsBtn:SetText("Restore defaults")
     defaultsBtn:SetScript("OnClick", function()
         WayBookDB.arriveDistance = DEFAULT_ARRIVE_DISTANCE
@@ -2554,6 +2554,20 @@ local function BuildOptionsUI()
         WayBook:Refresh()
         Print("Options restored to defaults. Notes, tags and tag definitions were left alone.")
     end)
+
+    -- Version and license, small and greyed, at the very bottom of the panel.
+    -- The version is read back out of the TOC rather than written here, so a
+    -- release bump stays a one-file edit and this line can never go stale.
+    -- The license is a literal on purpose: GetAddOnMetadata only returns
+    -- Blizzard's own standard fields plus anything prefixed "X-", and
+    -- "## License" is neither, so asking for it would just come back nil.
+    -- Not registered in the styled table below, so the list font-size slider
+    -- leaves it alone - it is chrome, not list content.
+    local GetMeta = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+    local version = GetMeta and GetMeta("WayBook", "Version") or "?"
+    local footer = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    footer:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 12)
+    footer:SetText("WayBook v" .. version .. "  |  MIT License")
 
     optionsFrame.controls = {
         keepCheck, iconCheck, groupNoneCheck, groupZoneCheck, groupTagCheck,
