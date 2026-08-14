@@ -1182,7 +1182,49 @@ local function KnownFactionNames()
     return names
 end
 
-local function TargetFactionTag()
+-- The localized word the tooltip's level line starts with, used to tell a
+-- level line apart from a subtitle. Derived from the game's own format string
+-- rather than hardcoded, the same way Leatrix_Plus does it on this client.
+local LEVEL_WORD = TOOLTIP_UNIT_LEVEL
+    and strtrim((TOOLTIP_UNIT_LEVEL:gsub("%%s", "")))
+    or LEVEL or "Level"
+
+-- Some faction names carry an article the game shows but nobody says: "The
+-- Tillers", "The Klaxxi". Dropped so the tag reads the way the faction is
+-- actually referred to, and so it lines up with tags defined by hand.
+local function StripArticle(name)
+    return (name:gsub("^The%s+", ""))
+end
+
+-- An NPC's subtitle is usually its faction plus its role, "Tillers
+-- Quartermaster". The faction is already its own tag, so only the role is new
+-- information here. Removed with a plain find rather than a pattern, because
+-- faction names contain characters Lua patterns treat as magic - "Shado-Pan"
+-- would otherwise match far more than intended.
+local function RoleFromSubtitle(subtitle, faction, factionTag)
+    local text = subtitle
+    -- Longest form first, so "The Tillers Quartermaster" loses the whole
+    -- faction rather than being left holding a stray "The".
+    for _, name in ipairs({ faction, factionTag }) do
+        if name and name ~= "" then
+            local at = text:find(name, 1, true)
+            if at then
+                text = text:sub(1, at - 1) .. text:sub(at + #name)
+            end
+        end
+    end
+    -- Trims whatever the removal left behind at either end, punctuation
+    -- included, so a possessive like "Tillers' Quartermaster" does not come
+    -- back as "' Quartermaster".
+    text = (text:gsub("^[%s%p]+", ""))
+    text = (text:gsub("[%s%p]+$", ""))
+    if text == "" then return nil end
+    return text
+end
+
+-- Reads the target's tooltip once and returns both the faction line and the
+-- subtitle, since finding either needs the whole populated tooltip anyway.
+local function ScanTargetTooltip()
     if not scanTooltip then
         scanTooltip = CreateFrame("GameTooltip", "WayBookScanTooltip", UIParent,
             "GameTooltipTemplate")
@@ -1192,13 +1234,25 @@ local function TargetFactionTag()
     scanTooltip:SetUnit("target")
 
     local known = KnownFactionNames()
+    local faction, subtitle
+
     -- From line 2: line 1 is always the unit's own name, and skipping it
     -- stops an NPC named after its faction from tagging itself off its title.
     for i = 2, scanTooltip:NumLines() do
         local line = _G["WayBookScanTooltipTextLeft" .. i]
         local text = line and line:GetText()
-        if text and known[text] then return text end
+        if text and text ~= "" then
+            if known[text] then
+                faction = faction or text
+            elseif i == 2 and not text:find(LEVEL_WORD, 1, true) then
+                -- Only line 2 can be the subtitle, and only when it is not
+                -- the level line - an NPC with no subtitle has the level
+                -- sitting there instead.
+                subtitle = text
+            end
+        end
     end
+    return faction, subtitle
 end
 
 local function TargetAutoTags()
@@ -1206,8 +1260,15 @@ local function TargetAutoTags()
     for _, tagName in ipairs(CLASSIFICATION_TAGS[UnitClassification("target") or ""] or {}) do
         tags[#tags + 1] = tagName
     end
-    local faction = TargetFactionTag()
-    if faction then tags[#tags + 1] = faction end
+
+    local faction, subtitle = ScanTargetTooltip()
+    local factionTag = faction and StripArticle(faction)
+    if factionTag and factionTag ~= "" then tags[#tags + 1] = factionTag end
+
+    if subtitle then
+        local role = RoleFromSubtitle(subtitle, faction, factionTag)
+        if role then tags[#tags + 1] = role end
+    end
     return tags
 end
 
