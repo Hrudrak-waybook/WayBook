@@ -2,10 +2,14 @@ name: Package and release
 
 # Annotated tags only. A lightweight tag (git tag v1.2.3) will not produce a
 # usable release - use git tag -a v1.2.3 -m "v1.2.3".
+#
+# Version tags only, too. This was '**' until 1.26.27, and a throwaway tag
+# named "prime" pushed to test credentials cut a full release and uploaded a
+# file called prime-mists to CurseForge.
 on:
   push:
     tags:
-      - '**'
+      - 'v*'
 
 jobs:
   release:
