@@ -10,7 +10,8 @@ often you go there and when you were last there.
 **Requires [TomTom](https://www.curseforge.com/wow/addons/tomtom).** WayBook
 does nothing on its own.
 
-Works on MoP Classic and Retail.
+Built for Mists of Pandaria Classic. A Retail build exists but has not been
+tested yet.
 
 ## Features
 
