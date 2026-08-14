@@ -92,6 +92,11 @@ end
 
 local WayBook = CreateFrame("Frame")
 local frame, scrollFrame, content, countText, searchBox
+-- Set by ScrollToWaypoint, consumed by the next Refresh, then cleared. A uid
+-- rather than an index, since the row a waypoint lands on depends on the
+-- current sort, grouping and search, none of which are known at the moment
+-- the waypoint is created.
+local pendingScrollUid
 local optionsFrame
 local exportFrame
 local shareFrame
@@ -1042,6 +1047,28 @@ end
 -- under a placeholder title and opens the Edit window straight into the
 -- label field, rather than leaving it untitled - the button always adds
 -- something, target or not.
+-- Ask the next Refresh to scroll this waypoint into view.
+--
+-- A brand-new waypoint can easily land inside a group the user has collapsed,
+-- in which case no row exists to scroll to at all, so the containing group is
+-- forced open first. Which group that is depends on the grouping mode: the
+-- zone name when grouped by zone, and UNTAGGED when grouped by tag, since
+-- nothing freshly created carries a tag yet.
+--
+-- Does nothing while the list window is closed - there is no scroll position
+-- to move, and leaving the request pending would make the list jump the next
+-- time the window happened to open.
+local function ScrollToWaypoint(uid)
+    if not (uid and frame and frame:IsShown()) then return end
+    local mode = GroupMode()
+    if mode == "zone" then
+        SetCollapsed(ZoneName(uid[1]), nil)
+    elseif mode == "tag" then
+        SetCollapsed(UNTAGGED, nil)
+    end
+    pendingScrollUid = uid
+end
+
 local function AddTargetWaypoint()
     local m, x, y = TomTom:GetCurrentPlayerPosition()
     if not (m and x and y) then
@@ -1076,6 +1103,10 @@ local function AddTargetWaypoint()
         cleardistance = KeepOnArrivalEnabled() and 0
             or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
     })
+    if uid then
+        ScrollToWaypoint(uid)
+        Print(("Saved %s."):format(name))
+    end
     return uid
 end
 
@@ -1509,6 +1540,7 @@ function WayBook:Refresh()
     -- line's height when they are showing tags, so positions accumulate
     -- rather than stepping by a single constant.
     local y = 0
+    local scrollTargetY
 
     for _, line in ipairs(display) do
         if line.kind == "header" then
@@ -1556,6 +1588,14 @@ function WayBook:Refresh()
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", content, "TOPLEFT", indent, y)
             row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
+            -- y is this row's own top edge, so -y is its distance below the
+            -- top of the scroll child - which is exactly the scroll offset
+            -- that brings it to the top of the visible area. Captured here
+            -- rather than computed afterwards because rows vary in height,
+            -- so there is no index-times-row-height shortcut to fall back on.
+            if pendingScrollUid and entry.uid == pendingScrollUid then
+                scrollTargetY = -y
+            end
             row.entry = entry
             row.text:ClearAllPoints()
             if isQuest then
@@ -1588,6 +1628,22 @@ function WayBook:Refresh()
     end
 
     content:SetHeight(math.max(-y, 1))
+
+    -- Consumed on the next refresh whether or not a row was actually found:
+    -- a waypoint the search box currently filters out has no row to scroll
+    -- to, and leaving the request pending would fire it at some unrelated
+    -- later refresh instead.
+    if pendingScrollUid then
+        if scrollTargetY then
+            -- The scroll range is derived from the child's size, which only
+            -- just changed on the line above - without this the clamp below
+            -- reads the previous rebuild's maximum.
+            scrollFrame:UpdateScrollChildRect()
+            local maxScroll = math.max(0, content:GetHeight() - scrollFrame:GetHeight())
+            scrollFrame:SetVerticalScroll(math.min(scrollTargetY, maxScroll))
+        end
+        pendingScrollUid = nil
+    end
 
     if entryTotal == 0 then
         countText:SetText("|cff999999No waypoints saved. Press Add Waypoint to save one here.|r")
