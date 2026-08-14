@@ -1121,13 +1121,56 @@ end
 -- Does nothing while the list window is closed - there is no scroll position
 -- to move, and leaving the request pending would make the list jump the next
 -- time the window happened to open.
+-- Tags derived from whatever is currently targeted, applied once at the
+-- moment a waypoint is created from that target. Deliberately inline in
+-- AddTargetWaypoint rather than on a hook: a hook on TomTom:AddWaypoint would
+-- fire for every waypoint from every source, and these are only ever meant to
+-- land on one you deliberately added from a target. Nothing on arrival, on
+-- clicking a row, or on any other creation path touches tags.
+--
+-- UnitClassification and UnitFactionGroup are both in live use on this client.
+-- Note that neither says anything about what an NPC *does* - vendor, trainer,
+-- banker and the rest are not exposed on a target at all, only at interaction
+-- time, which is a separate mechanism entirely.
+local CLASSIFICATION_TAGS = {
+    rare      = { "Rare" },
+    rareelite = { "Rare", "Elite" },
+    elite     = { "Elite" },
+    worldboss = { "Elite" },
+    -- "normal" is absent on purpose: tagging everything ordinary as ordinary
+    -- would put a tag on almost every waypoint and say nothing.
+}
+
+local function TargetAutoTags()
+    local tags = {}
+    for _, tagName in ipairs(CLASSIFICATION_TAGS[UnitClassification("target") or ""] or {}) do
+        tags[#tags + 1] = tagName
+    end
+    -- Checked against a known set rather than used as returned, so an
+    -- unexpected value can never define a junk tag that then sticks around in
+    -- the picker.
+    local faction = UnitFactionGroup("target")
+    if faction == "Alliance" or faction == "Horde" or faction == "Neutral" then
+        tags[#tags + 1] = faction
+    end
+    return tags
+end
+
 local function ScrollToWaypoint(uid)
     if not (uid and frame and frame:IsShown()) then return end
     local mode = GroupMode()
     if mode == "zone" then
         SetCollapsed(ZoneName(uid[1]), nil)
     elseif mode == "tag" then
-        SetCollapsed(UNTAGGED, nil)
+        -- Read the tags rather than assuming Untagged: a waypoint added from
+        -- a target arrives already carrying its auto-tags, so it lands under
+        -- those headers and never appears in Untagged at all.
+        local tags = GetTags(uid)
+        if #tags == 0 then
+            SetCollapsed(UNTAGGED, nil)
+        else
+            for _, tagName in ipairs(tags) do SetCollapsed(tagName, nil) end
+        end
     end
     pendingScrollUid = uid
 end
@@ -1158,6 +1201,10 @@ local function AddTargetWaypoint()
         return
     end
 
+    -- Read while the target is definitely still selected, before anything
+    -- else happens.
+    local autoTags = TargetAutoTags()
+
     local uid = TomTom:AddWaypoint(m, x, y, {
         title        = name,
         source       = "WayBook",
@@ -1167,8 +1214,25 @@ local function AddTargetWaypoint()
             or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
     })
     if uid then
+        -- Through DefineTag so the master list picks them up with its usual
+        -- case-insensitive dedup - an existing "rare" is reused rather than
+        -- sitting alongside a second "Rare".
+        local applied = {}
+        for _, tagName in ipairs(autoTags) do
+            local canonical = DefineTag(tagName)
+            if canonical then
+                ToggleTag(uid, canonical, true)
+                applied[#applied + 1] = canonical
+            end
+        end
+        -- Tagged before scrolling, so the group this lands under is the one
+        -- ScrollToWaypoint opens.
         ScrollToWaypoint(uid)
-        Print(("Saved %s."):format(name))
+        if #applied > 0 then
+            Print(("Saved %s. Tagged %s."):format(name, table.concat(applied, ", ")))
+        else
+            Print(("Saved %s."):format(name))
+        end
     end
     return uid
 end
