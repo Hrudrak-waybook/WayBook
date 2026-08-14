@@ -2,7 +2,7 @@
 ## Title: WayBook
 ## Notes: Clickable directory of your saved TomTom waypoints, grouped and colored by zone
 ## Author: Hrudrak
-## Version: 1.26.26
+## Version: 1.26.27
 ## License: MIT
 ## Dependencies: TomTom
 ## SavedVariablesPerCharacter: WayBookDB

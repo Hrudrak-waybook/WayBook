@@ -1,5 +1,9 @@
 HANDOFF.md
 curseforge-description.txt
+# Screenshots for the CurseForge project page. Local only: they are 2.5MB of
+# JPEGs, and tracking them put them in every release zip from 1.26.20 to
+# 1.26.26, taking the download from 39KB to 2.6MB.
+Images/
 .release/
 *.zip
 *.png

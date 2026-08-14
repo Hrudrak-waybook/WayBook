@@ -1,5 +1,9 @@
 # WayBook changelog
 
+## 1.26.27
+
+- The download is back to its normal size. Releases from 1.26.20 onward accidentally bundled 2.5MB of screenshots meant for the project page.
+
 ## 1.26.26
 
 - There is now a user guide: https://hrudrak-waybook.github.io/WayBook/
