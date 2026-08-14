@@ -16,52 +16,63 @@ BINDING_NAME_WAYBOOK_CLEAR_ARROW    = "Clear the arrow"
 -- TomTom is a hard dependency, so LibStub and HereBeDragons are already loaded.
 local hbd = LibStub and LibStub("HereBeDragons-2.0", true)
 
-local FRAME_WIDTH  = 360
+-- Layout numbers, colours and timings, held as fields on one table rather
+-- than as ~40 separate file-scope locals.
+--
+-- Lua caps a function at 200 locals and the main chunk of this file counts as
+-- one. In 1.26.19 a single added helper took it to 201 and the whole file
+-- stopped compiling, which in game is the silent "addon does not load"
+-- failure. A table costs one slot however many fields it carries.
+--
+-- Purely a rename: every value, and every place that reads it, is unchanged.
+local K = {}
+
+K.FRAME_WIDTH  = 360
 -- 446 rather than 420 since 1.26.8: the group-by row added under the search
 -- box takes 26px, and the frame grew by exactly that so the list area below
 -- it is unchanged.
-local FRAME_HEIGHT = 446
-local GROUP_ROW_Y = -68   -- group-by radios and the sort toggle, under the search box
-local ROW_PADDING = 5   -- row height on top of the glyph height
-local CHECK_INTERVAL = 0.5
-local VISIT_DISTANCE = 15   -- yards; counts as "I went there"
-local DISTANCE_INTERVAL = 1   -- how often the list re-reads distances while open
-local ZONE_INDENT = 12
-local BUTTON_WIDTH, BUTTON_HEIGHT = 100, 22
-local SEARCH_BOX_HEIGHT = 22
-local BUTTON_FONT_DELTA = -2   -- trims the stock button label a touch
-local MIN_LIST_FONT_SIZE = 7
-local MAX_LIST_FONT_SIZE = 20
-local DEFAULT_LIST_FONT_SIZE = 10   -- what GameFontNormalSmall gives you
+K.FRAME_HEIGHT = 446
+K.GROUP_ROW_Y = -68   -- group-by radios and the sort toggle, under the search box
+K.ROW_PADDING = 5   -- row height on top of the glyph height
+K.CHECK_INTERVAL = 0.5
+K.VISIT_DISTANCE = 15   -- yards; counts as "I went there"
+K.DISTANCE_INTERVAL = 1   -- how often the list re-reads distances while open
+K.ZONE_INDENT = 12
+K.BUTTON_WIDTH, K.BUTTON_HEIGHT = 100, 22
+K.SEARCH_BOX_HEIGHT = 22
+K.BUTTON_FONT_DELTA = -2   -- trims the stock button label a touch
+K.MIN_LIST_FONT_SIZE = 7
+K.MAX_LIST_FONT_SIZE = 20
+K.DEFAULT_LIST_FONT_SIZE = 10   -- what GameFontNormalSmall gives you
 
-local DEFAULT_CLEAR_DISTANCE  = 10
-local DEFAULT_ARRIVE_DISTANCE = 10
+K.DEFAULT_CLEAR_DISTANCE  = 10
+K.DEFAULT_ARRIVE_DISTANCE = 10
 
-local BAR_PADDING = 10   -- text inset inside the collapsed bar
-local BAR_GAP = 4        -- gap between the bar and the expanded window
+K.BAR_PADDING = 10   -- text inset inside the collapsed bar
+K.BAR_GAP = 4        -- gap between the bar and the expanded window
 -- Grace period before an actual collapse, so the mouse has time to cross the
 -- gap between the bar and the window (or between the window and a child
 -- window like Options) without everything snapping shut mid-move.
-local COLLAPSE_DELAY = 0.4
+K.COLLAPSE_DELAY = 0.4
 -- How often the collapse watcher polls IsMouseOver() on every relevant
 -- window. Fast enough to feel immediate, cheap enough to run continuously.
-local WATCH_INTERVAL = 0.15
+K.WATCH_INTERVAL = 0.15
 
-local COLOR_LABEL    = "|cff40ff40"
-local COLOR_COORDS   = "|cffffffff"
-local COLOR_NOTE     = "|cffffd100"
+K.COLOR_LABEL    = "|cff40ff40"
+K.COLOR_COORDS   = "|cffffffff"
+K.COLOR_NOTE     = "|cffffd100"
 -- Raw hex, not an escape-code string: this tints badge text via SetTextColor
 -- (needs 0-1 floats through HexToRGB), and the tooltip's tag line (needs
 -- floats too), never a |cff-prefixed string dropped straight into :SetText.
-local COLOR_TAG = "ff9933"
-local ZONE_COLORS  = { "73b3ff", "ffbf59", "d999ff", "73ffd9", "ff8c99", "f2f280" }
+K.COLOR_TAG = "ff9933"
+K.ZONE_COLORS  = { "73b3ff", "ffbf59", "d999ff", "73ffd9", "ff8c99", "f2f280" }
 -- Okabe & Ito (2008) - the standard reference palette for "distinguishable to
 -- both normal and color-blind vision", six of its seven non-black entries.
 -- Dropped Vermillion (d55e00): with only six slots, it sits closest to
 -- Orange, the one pair least worth keeping if something has to go.
-local ZONE_COLORS_COLORBLIND = { "0072b2", "e69f00", "56b4e9", "cc79a7", "009e73", "f0e442" }
+K.ZONE_COLORS_COLORBLIND = { "0072b2", "e69f00", "56b4e9", "cc79a7", "009e73", "f0e442" }
 -- Light enough that the header text stays fully legible over it.
-local ZONE_BAND_ALPHA = 0.22
+K.ZONE_BAND_ALPHA = 0.22
 
 local function HexToRGB(hex)
     return (tonumber(hex:sub(1, 2), 16) or 255) / 255,
@@ -135,8 +146,8 @@ local function Setting(key, default)
     return v
 end
 
-local function ListFontSize()   return Setting("listFontSize", DEFAULT_LIST_FONT_SIZE) end
-local function ArriveDistance() return Setting("arriveDistance", DEFAULT_ARRIVE_DISTANCE) end
+local function ListFontSize()   return Setting("listFontSize", K.DEFAULT_LIST_FONT_SIZE) end
+local function ArriveDistance() return Setting("arriveDistance", K.DEFAULT_ARRIVE_DISTANCE) end
 -- "zone", "tag" or "none". Replaced the old groupByZone boolean in 1.21.0 so
 -- a second grouping axis had somewhere to go; see the PLAYER_LOGIN migration
 -- for how an existing profile's boolean, and the 1.21.0 "category" value,
@@ -160,11 +171,11 @@ local function ShowDistance()   return Setting("showDistance", false) end
 local function ColorblindMode() return Setting("colorblindMode", false) end
 
 local function ActiveZoneColors()
-    return ColorblindMode() and ZONE_COLORS_COLORBLIND or ZONE_COLORS
+    return ColorblindMode() and K.ZONE_COLORS_COLORBLIND or K.ZONE_COLORS
 end
 
 local function RowHeight()
-    return ListFontSize() + ROW_PADDING
+    return ListFontSize() + K.ROW_PADDING
 end
 
 -- Keyed by whichever group label is currently on screen - a zone name or a
@@ -416,7 +427,7 @@ end
 -- parked at the end of a nearest-first sort.
 --------------------------------------------------------------------------
 
-local UNKNOWN_DISTANCE = math.huge
+K.UNKNOWN_DISTANCE = math.huge
 
 local function DistanceTo(uid)
     if not (TomTom and TomTom.GetDistanceToWaypoint) then return nil end
@@ -526,9 +537,9 @@ local function CompareEntries(a, b)
     end
 
     -- Nearest first, and unreachable entries sink to the bottom because
-    -- UNKNOWN_DISTANCE compares larger than any real reading.
+    -- K.UNKNOWN_DISTANCE compares larger than any real reading.
     if mode == "distance" then
-        local ad, bd = a.distance or UNKNOWN_DISTANCE, b.distance or UNKNOWN_DISTANCE
+        local ad, bd = a.distance or K.UNKNOWN_DISTANCE, b.distance or K.UNKNOWN_DISTANCE
         if ad ~= bd then
             if SortDescending() then return ad > bd end
             return ad < bd
@@ -589,7 +600,7 @@ end
 
 -- The "Untagged" bucket exists so an entry with no tags still shows up under
 -- a header when grouped that way, instead of vanishing.
-local UNTAGGED = "Untagged"
+K.UNTAGGED = "Untagged"
 
 -- Only ever computes zone-based grouping: every waypoint has exactly one
 -- zone, so a single groupKey/color per entry is unambiguous there. Tag
@@ -648,8 +659,8 @@ local function Collect()
             -- Zones lead with their closest member, otherwise nearest-first
             -- would still open on whichever zone sorts first alphabetically.
             if SortMode() == "distance" then
-                local az = zoneNearest[a.zone] or UNKNOWN_DISTANCE
-                local bz = zoneNearest[b.zone] or UNKNOWN_DISTANCE
+                local az = zoneNearest[a.zone] or K.UNKNOWN_DISTANCE
+                local bz = zoneNearest[b.zone] or K.UNKNOWN_DISTANCE
                 if az ~= bz then
                     if SortDescending() then return az > bz end
                     return az < bz
@@ -750,7 +761,7 @@ end
 local function BuildTagDisplay()
     local groups = {}
     for _, e in ipairs(entries) do
-        local memberOf = (#e.tags > 0) and e.tags or { UNTAGGED }
+        local memberOf = (#e.tags > 0) and e.tags or { K.UNTAGGED }
         for _, tagName in ipairs(memberOf) do
             local g = groups[tagName]
             if not g then
@@ -768,8 +779,8 @@ local function BuildTagDisplay()
     for name in pairs(groups) do names[#names + 1] = name end
     table.sort(names, function(a, b)
         if SortMode() == "distance" then
-            local az = groups[a].nearest or UNKNOWN_DISTANCE
-            local bz = groups[b].nearest or UNKNOWN_DISTANCE
+            local az = groups[a].nearest or K.UNKNOWN_DISTANCE
+            local bz = groups[b].nearest or K.UNKNOWN_DISTANCE
             if az ~= bz then
                 if SortDescending() then return az > bz end
                 return az < bz
@@ -845,19 +856,19 @@ end
 -- Zone segment with it while zone actually is that axis; grouped by tag,
 -- e.color identifies a tag instead, and painting the zone name with a tag's
 -- color would misidentify it.
-local COLOR_ZONE_FALLBACK = "|cff8899aa"
+K.COLOR_ZONE_FALLBACK = "|cff8899aa"
 
 local function RowText(e)
     local parts = {}
-    if ShowLabel() then parts[#parts + 1] = COLOR_LABEL .. e.title .. "|r" end
+    if ShowLabel() then parts[#parts + 1] = K.COLOR_LABEL .. e.title .. "|r" end
     -- Tags never join this line - see the Tags section for why they render
     -- as their own badges under the row instead.
     if ShowZone() then
-        local zoneColor = GroupByTag() and COLOR_ZONE_FALLBACK or ("|cff" .. e.color)
+        local zoneColor = GroupByTag() and K.COLOR_ZONE_FALLBACK or ("|cff" .. e.color)
         parts[#parts + 1] = zoneColor .. e.zone .. "|r"
     end
     if ShowCoords() then
-        parts[#parts + 1] = ("%s(%.1f, %.1f)|r"):format(COLOR_COORDS, e.x, e.y)
+        parts[#parts + 1] = ("%s(%.1f, %.1f)|r"):format(K.COLOR_COORDS, e.x, e.y)
     end
     -- Distance is deliberately absent: it gets its own font string pinned to the
     -- right edge of the row so the numbers line up down the column.
@@ -866,7 +877,7 @@ local function RowText(e)
     end
     local text = table.concat(parts, "  -  ")
     if GetNote(e.uid) then
-        text = text .. "  " .. COLOR_NOTE .. "*|r"
+        text = text .. "  " .. K.COLOR_NOTE .. "*|r"
     end
     return text
 end
@@ -899,7 +910,7 @@ local function ApplyKeepOnArrivalToOwnWaypoints()
     local store = TomTom and TomTom.waypoints
     if not store then return end
     local dist = WayBookDB.keepOnArrival and 0
-        or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE)
+        or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE)
     for _, group in pairs(store) do
         for _, uid in pairs(group) do
             if uid.source == "WayBook" then
@@ -987,7 +998,7 @@ local function RenameWaypoint(entry, newTitle)
         persistent   = true,
         crazy        = false,
         cleardistance = KeepOnArrivalEnabled() and 0
-            or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
+            or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
     })
 
     if newUid then
@@ -1047,7 +1058,7 @@ local function MoveWaypoint(entry, newX, newY)
         persistent   = true,
         crazy        = false,
         cleardistance = KeepOnArrivalEnabled() and 0
-            or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
+            or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
     })
 
     if newUid then
@@ -1115,7 +1126,7 @@ end
 -- A brand-new waypoint can easily land inside a group the user has collapsed,
 -- in which case no row exists to scroll to at all, so the containing group is
 -- forced open first. Which group that is depends on the grouping mode: the
--- zone name when grouped by zone, and UNTAGGED when grouped by tag, since
+-- zone name when grouped by zone, and K.UNTAGGED when grouped by tag, since
 -- nothing freshly created carries a tag yet.
 --
 -- Does nothing while the list window is closed - there is no scroll position
@@ -1339,7 +1350,7 @@ local function ScrollToWaypoint(uid)
         -- those headers and never appears in Untagged at all.
         local tags = GetTags(uid)
         if #tags == 0 then
-            SetCollapsed(UNTAGGED, nil)
+            SetCollapsed(K.UNTAGGED, nil)
         else
             for _, tagName in ipairs(tags) do SetCollapsed(tagName, nil) end
         end
@@ -1361,7 +1372,7 @@ local function AddTargetWaypoint()
             persistent   = true,
             crazy        = false,
             cleardistance = KeepOnArrivalEnabled() and 0
-                or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
+                or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
         })
         if uid then PromptEdit({ uid = uid, title = "New waypoint" }) end
         return uid
@@ -1383,7 +1394,7 @@ local function AddTargetWaypoint()
         persistent   = true,
         crazy        = false,   -- you are already standing on it
         cleardistance = KeepOnArrivalEnabled() and 0
-            or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
+            or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
     })
     if uid then
         -- Through DefineTag so the master list picks them up with its usual
@@ -1465,7 +1476,7 @@ end
 
 local function WatchArrow(_, elapsed)
     sinceCheck = sinceCheck + elapsed
-    if sinceCheck < CHECK_INTERVAL then return end
+    if sinceCheck < K.CHECK_INTERVAL then return end
     sinceCheck = 0
 
     if type(activeArrow) ~= "table" or not TomTom:IsValidWaypoint(activeArrow) then
@@ -1478,7 +1489,7 @@ local function WatchArrow(_, elapsed)
     if not dist then return end
 
     local threshold = ArriveDistance()
-    if dist > math.max(threshold, VISIT_DISTANCE) then
+    if dist > math.max(threshold, K.VISIT_DISTANCE) then
         leftTheArea = true
         return
     end
@@ -1487,7 +1498,7 @@ local function WatchArrow(_, elapsed)
     -- were already standing there, and don't fire while flying over.
     if not leftTheArea or UnitOnTaxi("player") then return end
 
-    if not visitRecorded and dist <= VISIT_DISTANCE then
+    if not visitRecorded and dist <= K.VISIT_DISTANCE then
         visitRecorded = true
         local count = RecordVisit(activeArrow)
         Print(("Reached %s. Visit %d."):format(activeArrow.title or "waypoint", count or 1))
@@ -1530,13 +1541,13 @@ end
 -- wanted here specifically, not badges that scale with everything else.
 -- Captured once from GameFontNormalSmall's own file/flags so the
 -- badge text still matches the rest of the list's typeface.
-local BADGE_FONT_SIZE = 7
-local BADGE_HEIGHT     = 12   -- background + text, one badge line
-local BADGE_PADDING    = 4    -- horizontal padding inside a badge's background
-local BADGE_GAP        = 4    -- gap between adjacent badges
-local BADGE_ROW_GAP    = 2    -- gap between the label line and the badge line
-local BADGE_EDGE_SIZE  = 4    -- UI-Tooltip-Border's edge thickness, scaled down for a small pill
-local BADGE_INSET      = 1
+K.BADGE_FONT_SIZE = 7
+K.BADGE_HEIGHT     = 12   -- background + text, one badge line
+K.BADGE_PADDING    = 4    -- horizontal padding inside a badge's background
+K.BADGE_GAP        = 4    -- gap between adjacent badges
+K.BADGE_ROW_GAP    = 2    -- gap between the label line and the badge line
+K.BADGE_EDGE_SIZE  = 4    -- UI-Tooltip-Border's edge thickness, scaled down for a small pill
+K.BADGE_INSET      = 1
 local badgeFontFile, badgeFontFlags
 
 -- WoW's own Quest Log window icon (the blue book) - confirmed by dumping
@@ -1545,8 +1556,8 @@ local badgeFontFile, badgeFontFlags
 -- atlas, only as a bare file ID, so there is no string path to reference
 -- instead. Shown next to any row whose waypoint carries the "Quest" tag -
 -- see IsQuestTagged - not tied to Questie or any other detection.
-local QUEST_TAG_ICON = 136797
-local QUEST_ICON_GAP = 3   -- matches the gap row.del already keeps before row.text
+K.QUEST_TAG_ICON = 136797
+K.QUEST_ICON_GAP = 3   -- matches the gap row.del already keeps before row.text
 
 local function BadgeFont()
     if not badgeFontFile then
@@ -1554,7 +1565,7 @@ local function BadgeFont()
         badgeFontFile, _, badgeFontFlags = probe:GetFont()
         probe:Hide()
     end
-    return badgeFontFile, BADGE_FONT_SIZE, badgeFontFlags
+    return badgeFontFile, K.BADGE_FONT_SIZE, badgeFontFlags
 end
 
 -- One badge = a small rounded pill sized to fit its own text, plus the text
@@ -1573,11 +1584,11 @@ local function AcquireBadge(row, index)
         bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = false,
-        edgeSize = BADGE_EDGE_SIZE,
-        insets = { left = BADGE_INSET, right = BADGE_INSET, top = BADGE_INSET, bottom = BADGE_INSET },
+        edgeSize = K.BADGE_EDGE_SIZE,
+        insets = { left = K.BADGE_INSET, right = K.BADGE_INSET, top = K.BADGE_INSET, bottom = K.BADGE_INSET },
     })
     do
-        local r, g, b = HexToRGB(COLOR_TAG)
+        local r, g, b = HexToRGB(K.COLOR_TAG)
         badge:SetBackdropColor(r, g, b, 0.16)
         badge:SetBackdropBorderColor(r, g, b, 0.8)
     end
@@ -1586,7 +1597,7 @@ local function AcquireBadge(row, index)
     badge.text:SetPoint("CENTER", badge, "CENTER", 0, 0)
     local file, size, flags = BadgeFont()
     badge.text:SetFont(file, size, flags)
-    badge.text:SetTextColor(HexToRGB(COLOR_TAG))
+    badge.text:SetTextColor(HexToRGB(K.COLOR_TAG))
 
     row.badges[index] = badge
     return badge
@@ -1609,23 +1620,23 @@ local function LayoutBadges(row, tags)
     -- so badges never drift out from under row.text when the icon shows.
     local x = row.del:GetWidth() + 2 + 3
     if row.questIcon:IsShown() then
-        x = x + row.questIcon:GetWidth() + QUEST_ICON_GAP
+        x = x + row.questIcon:GetWidth() + K.QUEST_ICON_GAP
     end
     for i, tagName in ipairs(tags) do
         local badge = AcquireBadge(row, i)
         badge.text:SetText(tagName)
-        local w = badge.text:GetStringWidth() + BADGE_PADDING * 2
-        badge:SetSize(w, BADGE_HEIGHT)
+        local w = badge.text:GetStringWidth() + K.BADGE_PADDING * 2
+        badge:SetSize(w, K.BADGE_HEIGHT)
         badge:ClearAllPoints()
-        badge:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", x, -BADGE_ROW_GAP)
+        badge:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", x, -K.BADGE_ROW_GAP)
         badge:Show()
-        x = x + w + BADGE_GAP
+        x = x + w + K.BADGE_GAP
     end
     for i = #tags + 1, #row.badges do
         row.badges[i]:Hide()
     end
 
-    return BADGE_ROW_GAP + BADGE_HEIGHT
+    return K.BADGE_ROW_GAP + K.BADGE_HEIGHT
 end
 
 local function AcquireEntryRow(index)
@@ -1659,7 +1670,7 @@ local function AcquireEntryRow(index)
     -- just to have a real object for LayoutBadges to query before the first
     -- refresh ever sets it one way or the other.
     row.questIcon = row:CreateTexture(nil, "ARTWORK")
-    row.questIcon:SetTexture(QUEST_TAG_ICON)
+    row.questIcon:SetTexture(K.QUEST_TAG_ICON)
     row.questIcon:Hide()
 
     -- Right-justified against the row's own right edge, so every reading in the
@@ -1690,7 +1701,7 @@ local function AcquireEntryRow(index)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(e.title, 0.25, 1, 0.25)
         if e.tags and #e.tags > 0 then
-            GameTooltip:AddLine(table.concat(e.tags, ", "), HexToRGB(COLOR_TAG))
+            GameTooltip:AddLine(table.concat(e.tags, ", "), HexToRGB(K.COLOR_TAG))
         end
         GameTooltip:AddLine(e.zone, 0.8, 0.8, 0.8)
         GameTooltip:AddLine(("%.1f, %.1f"):format(e.x, e.y), 1, 1, 1)
@@ -1811,7 +1822,7 @@ local function UpdateDistanceTicker()
         and (ShowDistance() or SortMode() == "distance")
 
     if wanted and not distanceTicker then
-        distanceTicker = C_Timer.NewTicker(DISTANCE_INTERVAL, function()
+        distanceTicker = C_Timer.NewTicker(K.DISTANCE_INTERVAL, function()
             WayBook:Refresh()
         end)
     elseif not wanted and distanceTicker then
@@ -1828,7 +1839,7 @@ function WayBook:Refresh()
 
     local rh = RowHeight()
     local grouped = GroupMode() ~= "none"
-    local indent = grouped and ZONE_INDENT or 0
+    local indent = grouped and K.ZONE_INDENT or 0
     local usedEntry, usedHeader = 0, 0
     -- Deliberate: redundant while grouped by tag, since a multi-tagged
     -- waypoint already shows up once under each of its tags' headers (see
@@ -1851,7 +1862,7 @@ function WayBook:Refresh()
             row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
             row:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y)
             local r, g, b = HexToRGB(line.color)
-            Tint(row.bg, r, g, b, ZONE_BAND_ALPHA)
+            Tint(row.bg, r, g, b, K.ZONE_BAND_ALPHA)
             -- The glyph has to agree with what is actually drawn, and a search
             -- forces every group open regardless of its saved state.
             local folded = Collapsed(line.groupKey) and not Searching()
@@ -1873,7 +1884,7 @@ function WayBook:Refresh()
             local isQuest = IsQuestTagged(entry.tags)
             row.questIcon:SetSize(btn, btn)
             row.questIcon:ClearAllPoints()
-            row.questIcon:SetPoint("LEFT", row.del, "RIGHT", QUEST_ICON_GAP, 0)
+            row.questIcon:SetPoint("LEFT", row.del, "RIGHT", K.QUEST_ICON_GAP, 0)
             if isQuest then row.questIcon:Show() else row.questIcon:Hide() end
 
             -- LayoutBadges reads row.questIcon's shown/hidden state and size
@@ -1898,7 +1909,7 @@ function WayBook:Refresh()
             row.entry = entry
             row.text:ClearAllPoints()
             if isQuest then
-                row.text:SetPoint("LEFT", row.questIcon, "RIGHT", QUEST_ICON_GAP, 0)
+                row.text:SetPoint("LEFT", row.questIcon, "RIGHT", K.QUEST_ICON_GAP, 0)
             else
                 row.text:SetPoint("LEFT", row.del, "RIGHT", 3, 0)
             end
@@ -2031,13 +2042,13 @@ end
 -- structure rather than blending into the checkbox labels below them, which
 -- keep the template's own default yellow. No background band - removed on
 -- request; color alone carries the distinction now.
-local SECTION_HEADING_COLOR = { 0.65, 0.85, 1 }
+K.SECTION_HEADING_COLOR = { 0.65, 0.85, 1 }
 
 local function MakeSectionHeading(parent, x, y, text)
     local heading = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     heading:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
     heading:SetText(text)
-    heading:SetTextColor(SECTION_HEADING_COLOR[1], SECTION_HEADING_COLOR[2], SECTION_HEADING_COLOR[3])
+    heading:SetTextColor(K.SECTION_HEADING_COLOR[1], K.SECTION_HEADING_COLOR[2], K.SECTION_HEADING_COLOR[3])
     return heading
 end
 
@@ -2304,11 +2315,11 @@ local function AcquireEditTagChip(pool, parent, index)
         bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         tile = false,
-        edgeSize = BADGE_EDGE_SIZE,
-        insets = { left = BADGE_INSET, right = BADGE_INSET, top = BADGE_INSET, bottom = BADGE_INSET },
+        edgeSize = K.BADGE_EDGE_SIZE,
+        insets = { left = K.BADGE_INSET, right = K.BADGE_INSET, top = K.BADGE_INSET, bottom = K.BADGE_INSET },
     })
     do
-        local r, g, b = HexToRGB(COLOR_TAG)
+        local r, g, b = HexToRGB(K.COLOR_TAG)
         chip:SetBackdropColor(r, g, b, 0.16)
         chip:SetBackdropBorderColor(r, g, b, 0.8)
     end
@@ -2317,17 +2328,17 @@ local function AcquireEditTagChip(pool, parent, index)
     chip.text:SetPoint("CENTER", chip, "CENTER", 0, 0)
     local file, size, flags = BadgeFont()
     chip.text:SetFont(file, size, flags)
-    chip.text:SetTextColor(HexToRGB(COLOR_TAG))
+    chip.text:SetTextColor(HexToRGB(K.COLOR_TAG))
 
     chip:SetScript("OnEnter", function(self)
-        local r, g, b = HexToRGB(COLOR_TAG)
+        local r, g, b = HexToRGB(K.COLOR_TAG)
         self:SetBackdropColor(r, g, b, 0.32)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Click to remove")
         GameTooltip:Show()
     end)
     chip:SetScript("OnLeave", function(self)
-        local r, g, b = HexToRGB(COLOR_TAG)
+        local r, g, b = HexToRGB(K.COLOR_TAG)
         self:SetBackdropColor(r, g, b, 0.16)
         GameTooltip:Hide()
     end)
@@ -2425,7 +2436,7 @@ local function BuildEditUI()
     -- the bottom. Anything that needs the chip area's y reads this.
     local CHIP_AREA_Y = -230
     local CHIP_AREA_WIDTH = 330
-    local CHIP_ROW_STEP = BADGE_HEIGHT + 6
+    local CHIP_ROW_STEP = K.BADGE_HEIGHT + 6
     local GAP_AFTER_CHIPS = 20
     local GAP_HEADING_TO_BOX = 16
     local GAP_BEFORE_CLOSE = 16
@@ -2481,12 +2492,12 @@ local function BuildEditUI()
         for i, tagName in ipairs(tags) do
             local chip = AcquireEditTagChip(editFrame.chips, chipContent, i)
             chip.text:SetText(tagName)
-            local w = chip.text:GetStringWidth() + BADGE_PADDING * 2
+            local w = chip.text:GetStringWidth() + K.BADGE_PADDING * 2
             if x > 0 and x + w > CHIP_AREA_WIDTH then
                 x = 0
                 y = y + CHIP_ROW_STEP
             end
-            chip:SetSize(w, BADGE_HEIGHT)
+            chip:SetSize(w, K.BADGE_HEIGHT)
             chip:ClearAllPoints()
             chip:SetPoint("TOPLEFT", chipContent, "TOPLEFT", x, -y)
             chip:Show()
@@ -2495,13 +2506,13 @@ local function BuildEditUI()
                 WayBook:Refresh()
                 RefreshChips()
             end)
-            x = x + w + BADGE_GAP
+            x = x + w + K.BADGE_GAP
         end
         for i = #tags + 1, #editFrame.chips do
             editFrame.chips[i]:Hide()
         end
 
-        local chipsHeight = (#tags > 0) and (y + BADGE_HEIGHT) or 0
+        local chipsHeight = (#tags > 0) and (y + K.BADGE_HEIGHT) or 0
         local newLabelY = CHIP_AREA_Y - chipsHeight - GAP_AFTER_CHIPS
         local newBoxY = newLabelY - GAP_HEADING_TO_BOX
 
@@ -3001,7 +3012,7 @@ local function BuildOptionsUI()
     arriveSlider:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local fontSlider = MakeSlider(optionsFrame, "WayBookOptFont",
-        "List font size", 36, -466, MIN_LIST_FONT_SIZE, MAX_LIST_FONT_SIZE, 1,
+        "List font size", 36, -466, K.MIN_LIST_FONT_SIZE, K.MAX_LIST_FONT_SIZE, 1,
         ListFontSize,
         function(v)
             WayBookDB.listFontSize = v
@@ -3049,8 +3060,8 @@ local function BuildOptionsUI()
     defaultsBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -20, 46)
     defaultsBtn:SetText("Restore defaults")
     defaultsBtn:SetScript("OnClick", function()
-        WayBookDB.arriveDistance = DEFAULT_ARRIVE_DISTANCE
-        WayBookDB.listFontSize   = DEFAULT_LIST_FONT_SIZE
+        WayBookDB.arriveDistance = K.DEFAULT_ARRIVE_DISTANCE
+        WayBookDB.listFontSize   = K.DEFAULT_LIST_FONT_SIZE
         WayBookDB.sortDescending = false
         WayBookDB.clearArrowOnLogin = true
         WayBookDB.colorblindMode = false
@@ -3196,7 +3207,7 @@ end
 local function ScheduleCollapse()
     if not AutoCollapseEnabled() then return end
     if collapseTimer then return end
-    collapseTimer = C_Timer.NewTimer(COLLAPSE_DELAY, function()
+    collapseTimer = C_Timer.NewTimer(K.COLLAPSE_DELAY, function()
         collapseTimer = nil
         CollapseToBar()
     end)
@@ -3213,9 +3224,9 @@ end
 -- missed were children sitting inside the windows; here they are siblings
 -- sitting alongside them. Anything WayBook opens that is not parented to one
 -- of its own frames needs adding here.
-local BORROWED_FRAMES = { "DropDownList1", "DropDownList2" }
+K.BORROWED_FRAMES = { "DropDownList1", "DropDownList2" }
 for i = 1, (STATICPOPUP_NUMDIALOGS or 4) do
-    BORROWED_FRAMES[#BORROWED_FRAMES + 1] = "StaticPopup" .. i
+    K.BORROWED_FRAMES[#K.BORROWED_FRAMES + 1] = "StaticPopup" .. i
 end
 
 local function IsMouseOverInterface()
@@ -3225,7 +3236,7 @@ local function IsMouseOverInterface()
     if exportFrame and exportFrame:IsShown() and exportFrame:IsMouseOver() then return true end
     if shareFrame  and shareFrame:IsShown()  and shareFrame:IsMouseOver()  then return true end
     if editFrame   and editFrame:IsShown()   and editFrame:IsMouseOver()   then return true end
-    for _, name in ipairs(BORROWED_FRAMES) do
+    for _, name in ipairs(K.BORROWED_FRAMES) do
         local f = _G[name]
         if f and f:IsShown() and f:IsMouseOver() then return true end
     end
@@ -3234,7 +3245,7 @@ end
 
 function StartCollapseWatcher()
     if collapseWatcher or not AutoCollapseEnabled() then return end
-    collapseWatcher = C_Timer.NewTicker(WATCH_INTERVAL, function()
+    collapseWatcher = C_Timer.NewTicker(K.WATCH_INTERVAL, function()
         if not AutoCollapseEnabled() then
             StopCollapseWatcher()
             return
@@ -3261,8 +3272,8 @@ local function PositionFrameNearBar()
 
     local frameAnchor = (isBottom and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT")
     local barAnchor   = (isBottom and "TOP" or "BOTTOM") .. (isLeft and "RIGHT" or "LEFT")
-    local xOff = isLeft and BAR_GAP or -BAR_GAP
-    local yOff = isBottom and BAR_GAP or -BAR_GAP
+    local xOff = isLeft and K.BAR_GAP or -K.BAR_GAP
+    local yOff = isBottom and K.BAR_GAP or -K.BAR_GAP
 
     frame:ClearAllPoints()
     frame:SetPoint(frameAnchor, barFrame, barAnchor, xOff, yOff)
@@ -3304,8 +3315,8 @@ local function BuildBarUI()
     local text = barFrame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     text:SetPoint("CENTER", barFrame, "CENTER", 0, 0)
     text:SetText("WayBook")
-    barFrame:SetSize(text:GetStringWidth() + BAR_PADDING * 2,
-        text:GetStringHeight() + BAR_PADDING)
+    barFrame:SetSize(text:GetStringWidth() + K.BAR_PADDING * 2,
+        text:GetStringHeight() + K.BAR_PADDING)
 
     -- No OnLeave here: once the frame is shown, the collapse watcher (started
     -- from the frame's own OnShow) is what decides when the mouse has left
@@ -3331,7 +3342,7 @@ local function BuildUI()
     local template = BackdropTemplateMixin and "BackdropTemplate" or nil
 
     frame = CreateFrame("Frame", "WayBookFrame", UIParent, template)
-    frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
+    frame:SetSize(K.FRAME_WIDTH, K.FRAME_HEIGHT)
     frame:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -3370,10 +3381,10 @@ local function BuildUI()
     -- Labelled buttons along the bottom: left, center, right.
     local function TextButton(label, anchor, relPoint, x, tipTitle, tipBody, onClick, binding)
         local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        b:SetSize(BUTTON_WIDTH, BUTTON_HEIGHT)
+        b:SetSize(K.BUTTON_WIDTH, K.BUTTON_HEIGHT)
         b:SetPoint(anchor, frame, relPoint, x, 16)
         b:SetText(label)
-        ShrinkOnce(b:GetFontString(), BUTTON_FONT_DELTA)
+        ShrinkOnce(b:GetFontString(), K.BUTTON_FONT_DELTA)
         b:SetScript("OnClick", onClick)
         b:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -3418,7 +3429,7 @@ local function BuildUI()
     searchBox = CreateFrame("EditBox", "WayBookSearchBox", frame, "SearchBoxTemplate")
     searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -40)
     searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -22, -40)
-    searchBox:SetHeight(SEARCH_BOX_HEIGHT)
+    searchBox:SetHeight(K.SEARCH_BOX_HEIGHT)
     searchBox:SetAutoFocus(false)
     searchBox:SetMaxLetters(60)
     if searchBox.Instructions then
@@ -3443,7 +3454,7 @@ local function BuildUI()
     -- in step because MakeCheck's OnClick calls RefreshOptions() and
     -- RefreshMainControls(), so a click in either panel re-syncs the other.
     local function MainGroupRadio(name, label, mode, x)
-        return MakeCheck(frame, name, label, x, GROUP_ROW_Y,
+        return MakeCheck(frame, name, label, x, K.GROUP_ROW_Y,
             function() return GroupMode() == mode end,
             function() SetGroupMode(mode) end)
     end
@@ -3462,7 +3473,7 @@ local function BuildUI()
     -- which is where it was confirmed present on this client.
     local sortDirBtn = CreateFrame("Button", "WayBookSortDir", frame)
     sortDirBtn:SetSize(22, 22)
-    sortDirBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, GROUP_ROW_Y - 1)
+    sortDirBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, K.GROUP_ROW_Y - 1)
     sortDirBtn:SetHighlightTexture(
         "Interface\\PaperDollInfoFrame\\UI-Character-Tab-Highlight", "ADD")
 
@@ -3508,7 +3519,7 @@ local function BuildUI()
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 46)
 
     content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(FRAME_WIDTH - 56, 1)
+    content:SetSize(K.FRAME_WIDTH - 56, 1)
     scrollFrame:SetScrollChild(content)
 
     -- Escape closes the frame through UISpecialFrames without going via Toggle,
@@ -3601,8 +3612,8 @@ WayBook:SetScript("OnEvent", function()
     -- an absolute point size and drop the old key.
     if WayBookDB.fontAdjust ~= nil then
         if WayBookDB.listFontSize == nil then
-            WayBookDB.listFontSize = math.max(MIN_LIST_FONT_SIZE,
-                math.min(MAX_LIST_FONT_SIZE, DEFAULT_LIST_FONT_SIZE + WayBookDB.fontAdjust))
+            WayBookDB.listFontSize = math.max(K.MIN_LIST_FONT_SIZE,
+                math.min(K.MAX_LIST_FONT_SIZE, K.DEFAULT_LIST_FONT_SIZE + WayBookDB.fontAdjust))
         end
         WayBookDB.fontAdjust = nil
     end
@@ -3622,7 +3633,7 @@ WayBook:SetScript("OnEvent", function()
         WayBookDB.keepOnArrival = TomTom.profile.persistence.cleardistance == 0
     end
     TomTom.profile.persistence.cleardistance =
-        WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE
+        WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE
     ApplyKeepOnArrivalToOwnWaypoints()
     TomTom:ReloadWaypoints()
 
