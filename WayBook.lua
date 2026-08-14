@@ -927,7 +927,6 @@ local function ActivateWaypoint(entry)
         return
     end
     TomTom:SetCrazyArrow(entry.uid, TomTom.profile.arrow.arrival, entry.title)
-    Print(("Arrow set to %s (%s)."):format(entry.title, entry.zone))
 end
 
 local function DeleteWaypoint(entry)
@@ -996,7 +995,6 @@ local function RenameWaypoint(entry, newTitle)
         TomTom:SetCrazyArrow(newUid, TomTom.profile.arrow.arrival, newTitle)
     end
 
-    Print(("Renamed %s to %s."):format(oldTitle, newTitle))
     return newUid
 end
 
@@ -1060,7 +1058,6 @@ local function AddTargetWaypoint()
             cleardistance = KeepOnArrivalEnabled() and 0
                 or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
         })
-        Print(("Saved a waypoint at %.1f, %.1f."):format(x * 100, y * 100))
         if uid then PromptEdit({ uid = uid, title = "New waypoint" }) end
         return uid
     end
@@ -1079,17 +1076,14 @@ local function AddTargetWaypoint()
         cleardistance = KeepOnArrivalEnabled() and 0
             or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
     })
-    Print(("Saved %s at %.1f, %.1f."):format(name, x * 100, y * 100))
     return uid
 end
 
 local function ClearArrow()
     if TomTom:IsCrazyArrowEmpty() then
-        Print("No arrow is set.")
         return
     end
     TomTom:SetCrazyArrow(nil)
-    Print("Arrow cleared.")
 end
 
 local function MinimapShown()
@@ -2549,7 +2543,6 @@ local function BuildOptionsUI()
         WayBookDB.point = nil
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        Print("List window recentered.")
     end)
 
     local defaultsBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
