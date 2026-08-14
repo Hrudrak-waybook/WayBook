@@ -2207,6 +2207,36 @@ local function BuildEditUI()
     editFrame:SetScript("OnHide", function()
         CommitLabel()
         CommitNote()
+        CloseDropDownMenus()
+    end)
+
+    -- This client's dropdowns do not close when you click away from them.
+    -- Blizzard wires that up on retail through UIDropDownMenuDelegate's own
+    -- GLOBAL_MOUSE_DOWN handler; the FrameXML here does not, which is exactly
+    -- why every dropdown library installed on this system (LibUIDropDownMenu,
+    -- Eliote's) reimplements the same handler itself. The event is available
+    -- on this client regardless - DBM-GUI registers it straight onto a button,
+    -- and three Titan addons register it on UIDropDownMenuDelegate - so
+    -- WayBook needs its own listener, not a whole embedded library.
+    --
+    -- Deliberately NOT done the way those libraries do it, by overwriting
+    -- UIDropDownMenuDelegate's OnEvent script: that is a shared global, and
+    -- replacing its handler would break every other addon leaning on it.
+    --
+    -- Scoped to "the Edit window is open", since that is the only place
+    -- WayBook opens a dropdown at all. IsMouseOver is a geometric bounds
+    -- check rather than a mouse-focus one, for the same reason the collapse
+    -- watcher uses it - a click landing on a child button inside the list
+    -- must still count as inside.
+    local dropdownWatcher = CreateFrame("Frame")
+    dropdownWatcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    dropdownWatcher:SetScript("OnEvent", function(_, _, button)
+        if button ~= "LeftButton" and button ~= "RightButton" then return end
+        if not editFrame:IsShown() then return end
+        local list = _G["DropDownList1"]
+        if not (list and list:IsVisible()) then return end
+        if list:IsMouseOver() or addTagDropdown:IsMouseOver() then return end
+        CloseDropDownMenus()
     end)
 end
 
