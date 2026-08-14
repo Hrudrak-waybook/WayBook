@@ -2370,6 +2370,23 @@ local function BuildEditUI()
     coordBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     coordBox:SetScript("OnEditFocusLost", CommitCoords)
 
+    -- EditBoxes do not chain to one another on their own; each one has to be
+    -- told what Tab means. HandyNotes and DBM-GUI wire theirs the same way on
+    -- this client. The ring wraps, and Shift-Tab walks it backwards.
+    --
+    -- Moving focus fires the box's own OnEditFocusLost, so tabbing out of a
+    -- field commits it, exactly as clicking away already did. Deliberately no
+    -- HighlightText on arrival: tabbing to the Note to add to it should not
+    -- leave the whole note selected, one keystroke from being wiped.
+    local tabRing = { labelBox, noteBox, coordBox, newBox }
+    for i, box in ipairs(tabRing) do
+        local nextBox = tabRing[i % #tabRing + 1]
+        local prevBox = tabRing[(i - 2) % #tabRing + 1]
+        box:SetScript("OnTabPressed", function()
+            if IsShiftKeyDown() then prevBox:SetFocus() else nextBox:SetFocus() end
+        end)
+    end
+
     function editFrame:SetEntry(entry)
         self.entry = entry
         self.title:SetText(entry.title)
