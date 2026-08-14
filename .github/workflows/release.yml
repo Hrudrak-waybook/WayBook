@@ -1,0 +1,32 @@
+name: Package and release
+
+# Annotated tags only. A lightweight tag (git tag v1.2.3) will not produce a
+# usable release - use git tag -a v1.2.3 -m "v1.2.3".
+on:
+  push:
+    tags:
+      - '**'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # -g pins the CurseForge upload to MoP Classic. Left to itself the
+      # packager reads every TOC in the repo and would also tag Retail
+      # 12.0.7 and 12.1.0 off WayBook_Mainline.toc, which has never been
+      # loaded on a Retail client. Delete the whole `with:` block once
+      # Retail is actually tested.
+      - name: Package and release
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -g 5.5.4
