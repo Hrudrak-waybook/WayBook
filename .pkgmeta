@@ -10,3 +10,5 @@ ignore:
     - HANDOFF.md
     - .gitignore
     - .github
+    # The user guide is served from GitHub Pages, not shipped to players.
+    - docs

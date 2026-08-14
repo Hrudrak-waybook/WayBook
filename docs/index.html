@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WayBook User Guide</title>
+<style>
+  :root {
+    --bg: #14100c;
+    --panel: #1c1712;
+    --panel-2: #241d16;
+    --ink: #e8dfd2;
+    --ink-dim: #a99b86;
+    --gold: #f0c674;
+    --green: #7fd67f;
+    --blue: #a6d4f2;
+    --rule: #3a2f24;
+    --code-bg: #100d09;
+    --max: 1180px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .wrap {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  header.masthead {
+    border-bottom: 1px solid var(--rule);
+    background: linear-gradient(180deg, #241d16, #14100c);
+    padding: 44px 24px 34px;
+    margin-bottom: 36px;
+  }
+  header.masthead .inner { max-width: var(--max); margin: 0 auto; }
+  header.masthead h1 {
+    margin: 0;
+    font-size: 2.5rem;
+    letter-spacing: .5px;
+    color: var(--gold);
+  }
+  header.masthead p {
+    margin: 10px 0 0;
+    color: var(--ink-dim);
+    font-size: 1.05rem;
+    max-width: 60ch;
+  }
+
+  .layout { display: grid; grid-template-columns: 250px 1fr; gap: 48px; }
+
+  nav.toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    font-size: .88rem;
+    border-right: 1px solid var(--rule);
+    padding-right: 18px;
+  }
+  nav.toc h2 {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    color: var(--ink-dim);
+    margin: 0 0 12px;
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: sec; }
+  nav.toc > ol > li { counter-increment: sec; margin-bottom: 6px; }
+  nav.toc > ol > li > a::before {
+    content: counter(sec) ". ";
+    color: var(--ink-dim);
+  }
+  nav.toc a {
+    color: var(--ink);
+    text-decoration: none;
+    display: block;
+    padding: 3px 0;
+  }
+  nav.toc a:hover { color: var(--gold); }
+
+  main { min-width: 0; }
+
+  section { margin-bottom: 52px; scroll-margin-top: 20px; }
+
+  h2.sec {
+    font-size: 1.6rem;
+    color: var(--gold);
+    margin: 0 0 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  h3 {
+    font-size: 1.1rem;
+    color: var(--blue);
+    margin: 30px 0 8px;
+  }
+  p { margin: 12px 0; max-width: 72ch; }
+  ul, ol.steps { max-width: 72ch; padding-left: 22px; }
+  li { margin: 6px 0; }
+
+  code, kbd {
+    font-family: "Cascadia Mono", Consolas, Menlo, monospace;
+    font-size: .9em;
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--gold);
+  }
+  kbd { color: var(--ink); }
+
+  .tablewrap { overflow-x: auto; margin: 18px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 460px;
+    font-size: .94rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    color: var(--blue);
+    font-weight: 600;
+    background: var(--panel-2);
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,.02); }
+  td:first-child { white-space: nowrap; color: var(--ink); }
+
+  .note {
+    border-left: 3px solid var(--gold);
+    background: var(--panel);
+    padding: 12px 18px;
+    margin: 20px 0;
+    max-width: 72ch;
+  }
+  .note p { margin: 6px 0; }
+  .note strong { color: var(--gold); }
+
+  .lead { color: var(--ink-dim); }
+
+  footer.end {
+    border-top: 1px solid var(--rule);
+    margin-top: 60px;
+    padding-top: 22px;
+    color: var(--ink-dim);
+    font-size: .9rem;
+  }
+
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; gap: 0; }
+    nav.toc {
+      position: static;
+      max-height: none;
+      border-right: 0;
+      border-bottom: 1px solid var(--rule);
+      padding: 0 0 20px;
+      margin-bottom: 32px;
+      column-count: 2;
+    }
+    header.masthead h1 { font-size: 1.9rem; }
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="inner">
+    <h1>WayBook</h1>
+    <p>An address book for your TomTom waypoints. This guide covers everything the addon does, in the order you are likely to need it.</p>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#what">What WayBook Is</a></li>
+    <li><a href="#start">Getting Started</a></li>
+    <li><a href="#tour">A Tour of the Main Window</a></li>
+    <li><a href="#working">Working with Waypoints</a></li>
+    <li><a href="#edit">The Edit Window</a></li>
+    <li><a href="#tags">Tags</a></li>
+    <li><a href="#finding">Finding Things</a></li>
+    <li><a href="#visits">Visit Tracking</a></li>
+    <li><a href="#bar">The Collapse Bar</a></li>
+    <li><a href="#share">Sharing and Exporting</a></li>
+    <li><a href="#options">Options Reference</a></li>
+    <li><a href="#keys">Key Bindings and Slash Commands</a></li>
+    <li><a href="#recipes">Recipes</a></li>
+    <li><a href="#trouble">Troubleshooting</a></li>
+    <li><a href="#about">About</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="what">
+  <h2 class="sec">1. What WayBook Is</h2>
+  <p>TomTom lets you save a waypoint and points an arrow at it. What it does not give you is a way to browse everything you have saved. WayBook is that missing half: a searchable, sortable, taggable list of every waypoint in your book, where clicking a row sends the arrow to it.</p>
+  <p>You can annotate any waypoint with a note, give it as many reusable tags as you want, and let WayBook count how often you go there and when you were last there.</p>
+  <div class="note">
+    <p><strong>WayBook requires TomTom.</strong> It reads and writes TomTom's waypoints rather than keeping its own, so with TomTom missing or disabled, WayBook does nothing at all.</p>
+  </div>
+  <p>Everything is saved per character. Your bank alt and your raiding main want to remember different places, so they each get their own book, their own notes and their own settings.</p>
+</section>
+
+<section id="start">
+  <h2 class="sec">2. Getting Started</h2>
+
+  <h3>2.1 Installing</h3>
+  <p>Install TomTom first. Then install WayBook through the CurseForge app, or unzip it into <code>World of Warcraft\_classic_\Interface\AddOns\</code> so that the folder sits at <code>AddOns\WayBook\</code>. Restart the game client, and make sure both are ticked on the character select AddOns list.</p>
+
+  <h3>2.2 Opening it</h3>
+  <p>Four ways in, and they all do the same thing:</p>
+  <ul>
+    <li>Type <code>/waybook</code> or <code>/wb</code></li>
+    <li>Click the minimap button</li>
+    <li>Press whatever you bind to "Toggle waypoint list" under Key Bindings</li>
+    <li><code>/wb options</code> jumps straight to the Options window</li>
+  </ul>
+  <p>The window is movable, remembers where you put it, and closes with <kbd>Esc</kbd>.</p>
+
+  <h3>2.3 Your first waypoint</h3>
+  <p>Stand somewhere you want to remember and press <strong>Add Waypoint</strong>. WayBook saves your current position and the new row flashes a few times so you can see where in the list it landed.</p>
+  <p>With something targeted, the waypoint is named after it and picks up tags automatically. With nothing targeted, it is called "New waypoint" and the Edit window opens right away so you can name it.</p>
+  <div class="note">
+    <p><strong>It always saves where <em>you</em> are standing.</strong> The game gives addons no way to read another creature's position, so targeting an NPC across the zone names the waypoint after them but drops it at your feet. Walk over first, or fix it afterwards with the position button described in section 5.2.</p>
+  </div>
+</section>
+
+<section id="tour">
+  <h2 class="sec">3. A Tour of the Main Window</h2>
+  <p class="lead">Top to bottom, everything on the main list window.</p>
+
+  <h3>3.1 Search box</h3>
+  <p>Across the top. Filters as you type against each waypoint's label, zone and note. Covered in full in section 7.1.</p>
+
+  <h3>3.2 Group-by row and the sort arrow</h3>
+  <p>Directly under the search box: <strong>None</strong>, <strong>By Zone</strong> and <strong>By Tag</strong>, plus an arrow button at the right that flips the sort direction. These are the same settings that live in Options, offered here because they are the two you change most. Changing one updates the other immediately.</p>
+
+  <h3>3.3 The list</h3>
+  <p>One row per waypoint. What each row shows depends on which columns you have turned on, joined together and separated by dashes:</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Part</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td>Label</td><td>The waypoint's name, in green. The only column on by default.</td></tr>
+      <tr><td>Zone</td><td>The zone it sits in.</td></tr>
+      <tr><td>Coordinates</td><td>Position on the zone map, in white.</td></tr>
+      <tr><td>Visits</td><td>How many times you have arrived there.</td></tr>
+      <tr><td>Distance</td><td>Its own right-aligned column so the readings line up down the list. Updates once a second.</td></tr>
+      <tr><td>Gold asterisk</td><td>Appended when the waypoint has a note.</td></tr>
+      <tr><td>Book icon</td><td>Shown at the start of the row on anything tagged "Quest".</td></tr>
+      <tr><td>Tag badges</td><td>Small pills under the row, when the Tags option is on.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>When grouping is on, each group gets a header row with a colored background band, a count, and a <code>+</code>/<code>-</code> toggle that folds it away. Header colors cycle through a six-color palette.</p>
+
+  <h3>3.4 The count line</h3>
+  <p>At the bottom. Normally it tells you how many waypoints you have. With something typed in the search box it reads "N of M waypoints match" instead, and if nothing matches it says so directly.</p>
+</section>
+
+<section id="working">
+  <h2 class="sec">4. Working with Waypoints</h2>
+
+  <h3>4.1 Adding one</h3>
+  <p>The <strong>Add Waypoint</strong> button always saves your own position. What changes is the name and the tags:</p>
+  <ul>
+    <li><strong>With a target selected</strong>, the waypoint takes the target's name and picks up automatic tags (section 6.4).</li>
+    <li><strong>With nothing selected</strong>, it is named "New waypoint" and the Edit window opens straight away.</li>
+  </ul>
+
+  <h3>4.2 The flash</h3>
+  <p>A newly added waypoint can land anywhere in the list depending on your sort, your grouping and whatever is in the search box. So its row flashes light gold three times to show you where it went, and the list scrolls it into view, opening whatever group it landed in.</p>
+  <p>This happens once per waypoint and never again. If the window was closed when you added it, the flash plays the next time you open the window.</p>
+
+  <h3>4.3 Row interactions</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Action</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Left-click</td><td>Point the crazy arrow at this waypoint</td></tr>
+      <tr><td>Right-click</td><td>Open the Edit window</td></tr>
+      <tr><td>Shift-click</td><td>Open the Share window</td></tr>
+      <tr><td>Hover</td><td>Tooltip with the name, tags, zone, coordinates, live distance, visit history and note</td></tr>
+      <tr><td>Red minus</td><td>Delete, after a confirmation</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Clicking a waypoint on another continent will tell you so rather than pretending the arrow was set, because the arrow cannot reach across continents.</p>
+</section>
+
+<section id="edit">
+  <h2 class="sec">5. The Edit Window</h2>
+  <p>Right-click any row. Everything about a waypoint is edited here.</p>
+
+  <h3>5.1 Label and note</h3>
+  <p>The label is the name shown in the list. The note is free text of any kind, it makes a gold asterisk appear on the row, and the search box reads it. Both save when you press <kbd>Enter</kbd>, when you click away, or when the window closes.</p>
+
+  <h3>5.2 Coordinates</h3>
+  <p>Type over the numbers to move the waypoint. The field accepts <code>45.2, 67.8</code> and <code>45.2 67.8</code> equally. Anything that is not two numbers between 0 and 100 is refused outright rather than quietly corrected.</p>
+  <p>The button beside the field stamps in your current position, which is the quick fix for a waypoint you saved while standing a long way from what you had targeted. Walk to the spot, right-click the row, click the button.</p>
+  <div class="note">
+    <p><strong>The position button only works in that waypoint's own zone.</strong> A move keeps a waypoint on the map it was created on, so stamping in a position read somewhere else would place it at those numbers in the wrong zone. WayBook refuses instead.</p>
+  </div>
+
+  <h3>5.3 Tags</h3>
+  <p>Current tags show as clickable chips. Click one to take it off. Use the dropdown to add any tag you have defined before, or type a new name in the box underneath to create one. The window grows to fit however many chips you end up with.</p>
+
+  <h3>5.4 Tabbing</h3>
+  <p><kbd>Tab</kbd> moves Label to Note to Coordinates to the new-tag box and back around to Label. <kbd>Shift</kbd>+<kbd>Tab</kbd> walks it backwards. Moving off a field saves it, so you can tab straight through and everything commits on the way past.</p>
+</section>
+
+<section id="tags">
+  <h2 class="sec">6. Tags</h2>
+
+  <h3>6.1 Defining and reusing</h3>
+  <p>Tags are shared across your whole book. Type a name once in the Edit window and it joins your master list, ready to pick from a dropdown on every waypoint after that. Names are matched without regard to case, so typing "rare" when you already have "Rare" reuses the existing one rather than making a near-duplicate.</p>
+  <p>The list cleans itself up. A tag that no waypoint uses any more disappears from the dropdown on its own, so it never fills with things you tried once.</p>
+
+  <h3>6.2 Badges</h3>
+  <p>Turn on <strong>Tags</strong> under "Show in the list" and each waypoint's tags appear as small rounded pills under its row. They keep a fixed size regardless of the list font slider.</p>
+
+  <h3>6.3 Grouping by tag</h3>
+  <p>Grouping by tag is genuinely many-to-many. A waypoint tagged "Auctioneer, Klaxxi, Quartermaster" appears under all three headers, not just the first one. Anything with no tags at all collects under an "Untagged" header.</p>
+  <p>While this grouping is on, the Tags badge option greys itself out, since every header already names the tag and the badges would only repeat it.</p>
+
+  <h3>6.4 Automatic tags</h3>
+  <p>Save a waypoint while you have an NPC targeted and WayBook can tag it for you from what the game already shows in the tooltip. Three kinds, each with its own checkbox under <strong>Auto-Tagging</strong> in Options:</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Option</th><th>What you get</th></tr></thead>
+    <tbody>
+      <tr><td>Rare/Elite</td><td>"Rare", "Elite", or both, from the creature's classification. A rare elite gets both.</td></tr>
+      <tr><td>Rep faction</td><td>The reputation it belongs to, with any leading "The" dropped, so you get "Klaxxi", "Tillers", "Golden Lotus".</td></tr>
+      <tr><td>Profession</td><td>What it does, from the title under its name: "Flight Master", "Innkeeper", "Quartermaster". The faction is stripped out first, so "Tillers Quartermaster" becomes just "Quartermaster".</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Unticking <strong>Auto-tag NPCs</strong> turns all of it off and greys out the three. Everything defaults to on.</p>
+  <div class="note">
+    <p><strong>Only at the moment of creation, and only from a target.</strong> Nothing already in your book is ever retagged, nothing is added when you approach or click a waypoint, and tags applied this way can be removed like any others.</p>
+  </div>
+
+  <h3>6.5 The Quest tag</h3>
+  <p>Any waypoint tagged "Quest" shows WoW's own quest log book icon at the start of its row. This is a plain rule about that one tag name, so you can apply it by hand to anything you like. If you run Questie, waypoints it creates for tracked objectives pick up the tag automatically.</p>
+</section>
+
+<section id="finding">
+  <h2 class="sec">7. Finding Things</h2>
+
+  <h3>7.1 Search</h3>
+  <p>The search box filters as you type, across labels, zones and notes together. Several points worth knowing:</p>
+  <ul>
+    <li>Space-separated words are all required, in any order. <code>bank org</code> and <code>org bank</code> both find the Orgrimmar bank.</li>
+    <li>Case is ignored.</li>
+    <li>Text is matched literally, so a label containing brackets or punctuation behaves normally.</li>
+    <li>Searching forces every group open, so nothing hides inside a folded header.</li>
+    <li>The box clears whenever the window closes, and is never saved between sessions.</li>
+  </ul>
+
+  <h3>7.2 Grouping</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Mode</th><th>Behavior</th></tr></thead>
+    <tbody>
+      <tr><td>None</td><td>One flat list.</td></tr>
+      <tr><td>By Zone</td><td>A header per zone. The Zone column greys out, since the header already says it.</td></tr>
+      <tr><td>By Tag</td><td>A header per tag, with waypoints repeating under each tag they carry. Tag badges grey out.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>7.3 Sorting</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Mode</th><th>Behavior</th></tr></thead>
+    <tbody>
+      <tr><td>Label</td><td>Alphabetical. The default.</td></tr>
+      <tr><td>Visits</td><td>Most visited first.</td></tr>
+      <tr><td>Last visited</td><td>Most recent first.</td></tr>
+      <tr><td>Nearest</td><td>Closest first, re-sorted once a second as you move. Grouped, the group holding your closest waypoint leads. Anything off the continent sits at the bottom.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>7.4 Direction</h3>
+  <p>The arrow button on the main window, or "Reverse sort order" in Options, flips the list. When grouped, this reverses both the order of the groups and the order inside each one.</p>
+</section>
+
+<section id="visits">
+  <h2 class="sec">8. Visit Tracking</h2>
+  <p>WayBook watches your position twice a second while the addon is loaded. Get within 15 yards of one of your waypoints and it records a visit: the count goes up by one and the timestamp updates. You have to leave the area and come back for it to count again, so standing on a spot does not inflate the number, and it does not record while you are on a flight path.</p>
+  <p>Both figures show in the row tooltip, and either can be used as a sort.</p>
+  <p>Separately, the <strong>Clear arrow within</strong> slider drops the crazy arrow once you get that close to whatever it is pointing at. The waypoint itself is never removed by this. Set the slider to 0 to switch the behavior off.</p>
+  <div class="note">
+    <p><strong>Waypoints surviving arrival is a setting.</strong> TomTom's own behavior is to delete a waypoint once you reach it. "Keep waypoints on arrival" in Options overrides that for WayBook's own waypoints, which is what makes a permanent address book possible. It is on by default and applies to your existing waypoints, not just new ones.</p>
+  </div>
+  <p>That setting is deliberately limited to waypoints WayBook created. A quest waypoint set by Questie still belongs to Questie, which removes it when you arrive, so finished objectives clear themselves out and your book does not silt up with old quest markers you never asked to keep.</p>
+</section>
+
+<section id="bar">
+  <h2 class="sec">9. The Collapse Bar</h2>
+  <p>Optional, off by default, under <strong>Auto-collapse to text bar</strong> in Options.</p>
+  <p>With it on, the main window shrinks to a small draggable bar reading "WayBook" a moment after your mouse leaves it. Hover the bar and the window comes back, opening toward the center of the screen from whichever corner the bar sits nearest.</p>
+  <p>The bar keeps its own position, separate from the window's, and stays on screen the whole time rather than appearing and disappearing. Nothing else about how the window behaves changes when this is off.</p>
+  <p>Collapsing is not the same as closing. Any Options, Export, Share or Edit window you have open stays open through a collapse. Closing the main window by hand is what shuts them all.</p>
+</section>
+
+<section id="share">
+  <h2 class="sec">10. Sharing and Exporting</h2>
+
+  <h3>10.1 Share one waypoint</h3>
+  <p>Shift-click a row. You get a small window holding the waypoint as a <code>/way</code> line, pre-selected for <kbd>Ctrl</kbd>+<kbd>C</kbd>, plus a <strong>Send to Chat</strong> button that drops the identical line into your active chat box.</p>
+  <div class="note">
+    <p><strong>Pressing Enter on that line runs it rather than sending it.</strong> Anything starting with a slash is treated as a command, so it recreates the waypoint for you locally. To actually give it to someone, paste it into a whisper or channel with something in front of it.</p>
+  </div>
+
+  <h3>10.2 Export the book</h3>
+  <p><strong>Export Waypoints</strong> in Options opens a selectable text dump of your waypoints as <code>/way</code> lines, with notes as comments. It honors the search box, so type something first to export a subset, or clear it for the whole book. Folded groups are included either way.</p>
+</section>
+
+<section id="options">
+  <h2 class="sec">11. Options Reference</h2>
+  <p class="lead">Every control, in the order it appears on screen. The Options window recenters itself each time it opens.</p>
+
+  <h3>General</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Keep waypoints on arrival</td><td>On</td><td>Stops TomTom deleting a waypoint once you reach it.</td></tr>
+      <tr><td>Show minimap button</td><td>On</td><td>The button that opens WayBook.</td></tr>
+      <tr><td>Reverse sort order</td><td>Off</td><td>Flips the list, groups included.</td></tr>
+      <tr><td>Clear arrow on login</td><td>On</td><td>Drops the arrow a second after you log in, instead of letting a restored waypoint grab it.</td></tr>
+      <tr><td>Use colorblind-friendly colors</td><td>Off</td><td>Swaps the group header and badge palette for the Okabe-Ito set, chosen to stay distinguishable under the common forms of color blindness.</td></tr>
+      <tr><td>Auto-collapse to text bar</td><td>Off</td><td>Section 9.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Sort by</h3>
+  <p>Label, Visits, Last visited, Nearest. Mutually exclusive. See section 7.3.</p>
+
+  <h3>Group by</h3>
+  <p>None, By Zone, By Tag. Mutually exclusive. See section 7.2.</p>
+
+  <h3>Show in the list</h3>
+  <p>Label, Zone, Tags, Coordinates, Visits, Distance. Only Label is on out of the box. Zone greys out while grouping by zone and Tags greys out while grouping by tag, in both cases because the header already carries the information.</p>
+  <p>At least one of Label, Zone, Coordinates, Visits or Distance has to stay on. Clear them all and Label comes back on its own, since a list of blank rows helps nobody. Tags is exempt, being badges rather than a text column.</p>
+
+  <h3>Auto-Tagging</h3>
+  <p><strong>Auto-tag NPCs</strong> is the master switch, with Rare/Elite, Rep faction and Profession beneath it. All four default to on. See section 6.4.</p>
+
+  <h3>Sliders and buttons</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Clear arrow within (yards)</td><td>0 to 60. Drops the arrow once you get this close. 0 turns it off.</td></tr>
+      <tr><td>List font size</td><td>7 to 20, default 10. Affects the waypoint list only, not buttons or checkboxes.</td></tr>
+      <tr><td>Export Waypoints</td><td>Section 10.2.</td></tr>
+      <tr><td>Restore window</td><td>Puts the main window back in the middle of the screen, for when it ends up somewhere unreachable.</td></tr>
+      <tr><td>Restore defaults</td><td>Resets every setting on this panel. Your notes, tags and tag definitions are left alone.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="keys">
+  <h2 class="sec">12. Key Bindings and Slash Commands</h2>
+
+  <h3>Slash commands</h3>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Command</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td><code>/waybook</code> or <code>/wb</code></td><td>Toggle the main window</td></tr>
+      <tr><td><code>/wb options</code> or <code>/wb config</code></td><td>Toggle the Options window</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Key bindings</h3>
+  <p>Four of them, in their own <strong>WayBook</strong> section of the Key Bindings screen. None are bound by default, so nothing of yours is taken over on install.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Binding</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Toggle waypoint list</td><td>Open or close the main window</td></tr>
+      <tr><td>Toggle options</td><td>Open or close Options</td></tr>
+      <tr><td>Add waypoint</td><td>Save your current position</td></tr>
+      <tr><td>Clear the arrow</td><td>Drop the crazy arrow without touching the waypoint</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Once bound, the keys show up in the tooltips of the matching on-screen buttons.</p>
+</section>
+
+<section id="recipes">
+  <h2 class="sec">13. Recipes</h2>
+
+  <h3>A dailies book for one faction</h3>
+  <p>Target each quest giver and press Add Waypoint. The faction tag arrives on its own. Then set <strong>Group by: By Tag</strong> and fold away every header except the one you are working on. Come back tomorrow and unfold it.</p>
+
+  <h3>A farming route</h3>
+  <p>Save every node or spawn point, tag them all with something like "Ghost Iron", then set <strong>Sort by: Nearest</strong> and turn on the Distance column. The list reorders as you move, so the top row is always your next stop.</p>
+
+  <h3>A quiet bank-and-vendor list</h3>
+  <p>Tag your bank, mailbox, auction house and repair vendor in each city. Turn on <strong>Auto-collapse to text bar</strong> and park the bar in a corner. WayBook stays out of your way until you hover it, which is all you need for places you visit constantly but never have to look up.</p>
+</section>
+
+<section id="trouble">
+  <h2 class="sec">14. Troubleshooting</h2>
+
+  <h3>Nothing happens when I type /wb</h3>
+  <p>The addon did not load. Check that TomTom is installed and enabled, since WayBook depends on it, and check WayBook is ticked on the AddOns list at character select. Enabling "Load out of date AddOns" rules out a version mismatch after a patch.</p>
+
+  <h3>The list is empty</h3>
+  <p>You have no waypoints saved yet, or the search box still has text in it. The count line tells you which.</p>
+
+  <h3>Clicking a row does not move the arrow</h3>
+  <p>If the waypoint is on another continent, WayBook says so rather than setting an arrow that cannot point anywhere. Otherwise check that TomTom's arrow is enabled in TomTom's own settings.</p>
+
+  <h3>My waypoints keep disappearing when I reach them</h3>
+  <p>Turn on <strong>Keep waypoints on arrival</strong>. That is TomTom's default behavior and this setting overrides it.</p>
+
+  <h3>A waypoint is nowhere near the NPC it is named after</h3>
+  <p>Waypoints are always saved at your own position, because no addon can read another creature's coordinates. Walk to the right spot, right-click the row, and click the button beside the Coordinates field.</p>
+
+  <h3>The window is off screen</h3>
+  <p><strong>Restore window</strong> in Options puts it back in the middle.</p>
+
+  <h3>Everything is a different color than it was</h3>
+  <p>Check whether <strong>Use colorblind-friendly colors</strong> got switched on. It swaps the group header and badge palette.</p>
+</section>
+
+<section id="about">
+  <h2 class="sec">15. About</h2>
+  <p>WayBook is open source under the MIT license. The version you are running is shown at the bottom of the Options window, along with the license.</p>
+  <p>It is built for Mists of Pandaria Classic. A Retail build exists but has not been tested.</p>
+  <p>Thanks to the authors of TomTom, which WayBook is built on top of and cannot work without.</p>
+  <p>Bug reports and suggestions go on the addon's CurseForge page.</p>
+</section>
+
+<footer class="end">
+  WayBook User Guide &middot; MIT License
+</footer>
+
+</main>
+</div>
+</div>
+
+</body>
+</html>
