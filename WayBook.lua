@@ -1821,13 +1821,31 @@ local function SyncZoneColumn(grouping)
     end
 end
 
--- Tags have no equivalent sync: they are never a text column (they render as
--- badges - see the Tags section), so there is no redundant column to hide
--- when grouped by tag. A multi-tagged waypoint's other tags are still new
--- information even when its first one is already naming the group header.
+-- Same stash-and-restore for the Tags badges while grouping by tag.
+--
+-- This used to be deliberately absent, on the reasoning that a multi-tagged
+-- waypoint's other tags were still new information when only its first one
+-- named the header. That stopped being true in 1.22.1, when grouping by tag
+-- became genuinely many-to-many: a waypoint now appears under a header for
+-- every tag it owns, so the badges repeat what the headers already say from
+-- every angle. Refresh has suppressed them since then; this makes the
+-- checkbox itself reflect that instead of sitting there ticked and ignored.
+local function SyncTagColumn(grouping)
+    if grouping then
+        if WayBookDB.tagColumnPreGroup == nil then
+            WayBookDB.tagColumnPreGroup = ShowTags() and true or false
+        end
+        WayBookDB.showTags = false
+    elseif WayBookDB.tagColumnPreGroup ~= nil then
+        WayBookDB.showTags = WayBookDB.tagColumnPreGroup
+        WayBookDB.tagColumnPreGroup = nil
+    end
+end
+
 local function SetGroupMode(mode)
     WayBookDB.groupBy = mode
     SyncZoneColumn(mode == "zone")
+    SyncTagColumn(mode == "tag")
 end
 
 -- At least one column has to stay visible or every row renders blank. Tags
@@ -2629,19 +2647,40 @@ local function BuildOptionsUI()
     end)
     zoneCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Not a text column: this just gates whether tag badges draw under a
-    -- row. No "redundant while grouped" disabling like Zone above, either -
-    -- grouping by tag only shows a waypoint's alphabetically-first tag in the
-    -- header, so any others it has are still new information as badges.
+    -- Not a text column: this gates whether tag badges draw under a row.
     local tagsCheck = MakeCheck(optionsFrame, "WayBookOptTags",
         "Tags", 30, -286, ShowTags,
         function(v) WayBookDB.showTags = v end)
+
+    -- Redundant while grouping by tag is on, exactly like Zone above, so it
+    -- gets the same flat-and-unclickable treatment.
+    local tagsCheckSync = tagsCheck.Sync
+    local tagsCheckText = tagsCheck.Text or tagsCheck.text or _G["WayBookOptTagsText"]
+    tagsCheck.Sync = function()
+        tagsCheckSync()
+        local grouping = GroupByTag()
+        if grouping then tagsCheck:Disable() else tagsCheck:Enable() end
+        if tagsCheckText then
+            if grouping then
+                tagsCheckText:SetTextColor(0.5, 0.5, 0.5)
+            else
+                tagsCheckText:SetTextColor(1, 0.82, 0)
+            end
+        end
+    end
     tagsCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Tags")
-        GameTooltip:AddLine(
-            "Shows each waypoint's tags as small badges under its row. " ..
-            "Ctrl-click a row to manage its tags.", 1, 1, 1, true)
+        if GroupByTag() then
+            GameTooltip:AddLine(
+                "Off because Group by Tag is on. A waypoint already appears " ..
+                "under a header for every tag it has, so the badges would " ..
+                "only repeat them.", 1, 1, 1, true)
+        else
+            GameTooltip:AddLine(
+                "Shows each waypoint's tags as small badges under its row. " ..
+                "Right-click a row to manage its tags.", 1, 1, 1, true)
+        end
         GameTooltip:Show()
     end)
     tagsCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2773,6 +2812,7 @@ local function BuildOptionsUI()
         WayBookDB.sortMode       = "label"
         WayBookDB.collapsed      = nil
         WayBookDB.zoneColumnPreGroup = nil
+        WayBookDB.tagColumnPreGroup  = nil
         SetGroupMode("zone")
         SetMinimapShown(true)
         SetKeepOnArrival(true)
