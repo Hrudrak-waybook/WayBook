@@ -1,0 +1,8 @@
+package-as: WayBook
+
+enable-nolib-creation: no
+
+ignore:
+    - HANDOFF.md
+    - .gitignore
+    - .github

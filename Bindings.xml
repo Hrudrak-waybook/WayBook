@@ -1,0 +1,14 @@
+<Bindings>
+	<Binding name="WAYBOOK_TOGGLE_LIST" category="WayBook">
+		WayBook_ToggleList()
+	</Binding>
+	<Binding name="WAYBOOK_TOGGLE_OPTIONS" category="WayBook">
+		WayBook_ToggleOptions()
+	</Binding>
+	<Binding name="WAYBOOK_ADD_TARGET" category="WayBook">
+		WayBook_AddTarget()
+	</Binding>
+	<Binding name="WAYBOOK_CLEAR_ARROW" category="WayBook">
+		WayBook_ClearArrow()
+	</Binding>
+</Bindings>
