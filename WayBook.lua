@@ -1128,10 +1128,16 @@ end
 -- land on one you deliberately added from a target. Nothing on arrival, on
 -- clicking a row, or on any other creation path touches tags.
 --
--- UnitClassification and UnitFactionGroup are both in live use on this client.
--- Note that neither says anything about what an NPC *does* - vendor, trainer,
--- banker and the rest are not exposed on a target at all, only at interaction
--- time, which is a separate mechanism entirely.
+-- UnitClassification is reliable on any targetable NPC. Note that it says
+-- nothing about what an NPC *does* - vendor, trainer, banker and the rest are
+-- not exposed on a target at all, only at interaction time, which is a
+-- separate mechanism entirely.
+--
+-- UnitFactionGroup was tried here in 1.26.14 and removed in 1.26.15. For NPCs
+-- it only answers for factions closely allied with Alliance or Horde, and
+-- returns nil for everything else (goblins are the documented example), so it
+-- tagged some waypoints and silently skipped most. A tag you cannot trust the
+-- absence of is worse than no tag.
 local CLASSIFICATION_TAGS = {
     rare      = { "Rare" },
     rareelite = { "Rare", "Elite" },
@@ -1145,13 +1151,6 @@ local function TargetAutoTags()
     local tags = {}
     for _, tagName in ipairs(CLASSIFICATION_TAGS[UnitClassification("target") or ""] or {}) do
         tags[#tags + 1] = tagName
-    end
-    -- Checked against a known set rather than used as returned, so an
-    -- unexpected value can never define a junk tag that then sticks around in
-    -- the picker.
-    local faction = UnitFactionGroup("target")
-    if faction == "Alliance" or faction == "Horde" or faction == "Neutral" then
-        tags[#tags + 1] = faction
     end
     return tags
 end
