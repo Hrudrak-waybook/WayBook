@@ -2162,6 +2162,14 @@ local function BuildEditUI()
     -- Fixed-width, but never fixed-height: chips wrap within CHIP_AREA_WIDTH
     -- and RefreshChips grows the frame to fit however many rows that takes,
     -- rather than letting them run under the controls below.
+    -- Declared once and used both to place the chip area and to work out
+    -- where everything under it lands. RefreshChips used to repeat this
+    -- number as a literal, which silently broke the whole lower half of the
+    -- window the moment the Coordinates field pushed the chip area down in
+    -- 1.26.8 - the chips ended up below "Define a new tag:" instead of above
+    -- it, and the frame fell back to its minimum height with dead space at
+    -- the bottom. Anything that needs the chip area's y reads this.
+    local CHIP_AREA_Y = -230
     local CHIP_AREA_WIDTH = 330
     local CHIP_ROW_STEP = BADGE_HEIGHT + 6
     local GAP_AFTER_CHIPS = 20
@@ -2175,7 +2183,7 @@ local function BuildEditUI()
                                    -- below it down by.
 
     local chipContent = CreateFrame("Frame", nil, editFrame)
-    chipContent:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, -230)
+    chipContent:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, CHIP_AREA_Y)
     chipContent:SetSize(CHIP_AREA_WIDTH, 1)
     editFrame.chipContent = chipContent
     editFrame.chips = {}
@@ -2229,7 +2237,7 @@ local function BuildEditUI()
         end
 
         local chipsHeight = (#tags > 0) and (y + BADGE_HEIGHT) or 0
-        local newLabelY = -186 - chipsHeight - GAP_AFTER_CHIPS
+        local newLabelY = CHIP_AREA_Y - chipsHeight - GAP_AFTER_CHIPS
         local newBoxY = newLabelY - GAP_HEADING_TO_BOX
 
         newLabel:ClearAllPoints()
