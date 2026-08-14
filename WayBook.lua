@@ -1168,11 +1168,26 @@ local CLASSIFICATION_TAGS = {
 -- is left alone instead of expanding the player's own headers behind them.
 local scanTooltip
 
+-- Only a corroborating signal now, never the thing the match depends on.
+--
+-- This was the primary mechanism until 1.26.18, and it half worked: the
+-- reputation list only enumerates rows that are *visible*, so a faction
+-- sitting under a collapsed header in the reputation pane is simply absent.
+-- Kik'tik's tooltip read "The Klaxxi" exactly, with no stray whitespace,
+-- and still failed to tag while Gina Mudclaw's "The Tillers" succeeded -
+-- the difference was which header happened to be expanded.
+--
+-- Note C_Reputation.GetNumFactions does not exist on this client even though
+-- C_Reputation itself does, hence the fallback to the global.
 local function KnownFactionNames()
     local names = {}
-    local getData = C_Reputation and C_Reputation.GetFactionDataByIndex
+    local getData = (C_Reputation and C_Reputation.GetFactionDataByIndex)
+        or function(i)
+            local name = GetFactionInfo(i)
+            return name and { name = name } or nil
+        end
     local getNum = (C_Reputation and C_Reputation.GetNumFactions) or GetNumFactions
-    if not (getData and getNum) then return names end
+    if not getNum then return names end
     for i = 1, (getNum() or 0) do
         local data = getData(i)
         -- Headers are kept too: a few of them carry reputation in their own
@@ -1233,25 +1248,44 @@ local function ScanTargetTooltip()
     scanTooltip:ClearLines()
     scanTooltip:SetUnit("target")
 
-    local known = KnownFactionNames()
-    local faction, subtitle
-
+    local lines, levelAt = {}, nil
     -- From line 2: line 1 is always the unit's own name, and skipping it
     -- stops an NPC named after its faction from tagging itself off its title.
     for i = 2, scanTooltip:NumLines() do
         local line = _G["WayBookScanTooltipTextLeft" .. i]
         local text = line and line:GetText()
-        if text and text ~= "" then
-            if known[text] then
-                faction = faction or text
-            elseif i == 2 and not text:find(LEVEL_WORD, 1, true) then
-                -- Only line 2 can be the subtitle, and only when it is not
-                -- the level line - an NPC with no subtitle has the level
-                -- sitting there instead.
-                subtitle = text
+        lines[i] = (text ~= "" and text) or nil
+        if lines[i] and not levelAt and lines[i]:find(LEVEL_WORD, 1, true) then
+            levelAt = i
+        end
+    end
+
+    -- The level line is the spine of an NPC tooltip. Everything before it is
+    -- name and optional subtitle; the faction, when there is one, is the line
+    -- straight after it. Both probes on this client agree:
+    --
+    --   Gina Mudclaw / Tillers Quartermaster / Level 90 / The Tillers
+    --   Kik'tik      / Flight Master         / Level 90 / The Klaxxi
+    --
+    -- Reading position rather than matching against the player's reputation
+    -- list means a faction still tags when it is collapsed out of that list,
+    -- or has never been encountered at all.
+    local subtitle = (levelAt ~= 2) and lines[2] or nil
+    local faction = levelAt and lines[levelAt + 1] or nil
+
+    -- Fall back to a reputation-list match anywhere in the tooltip if the
+    -- structural read came up empty - a tooltip with no level line at all
+    -- would otherwise yield nothing.
+    if not faction then
+        local known = KnownFactionNames()
+        for i = 2, scanTooltip:NumLines() do
+            if lines[i] and known[lines[i]] then
+                faction = lines[i]
+                break
             end
         end
     end
+
     return faction, subtitle
 end
 
