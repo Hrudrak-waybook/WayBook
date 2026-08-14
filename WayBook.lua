@@ -651,7 +651,7 @@ local function Collect()
         return CompareEntries(a, b)
     end)
 
-    -- Assign each distinct zone the next colour in the palette.
+    -- Assign each distinct zone the next color in the palette.
     local palette = ActiveZoneColors()
     local zoneColor, index, lastZone = {}, 0, nil
     for _, e in ipairs(entries) do
@@ -674,7 +674,7 @@ end
 --------------------------------------------------------------------------
 -- Export
 --
--- Honours the search box exactly like the main list does: filter down to a
+-- Honors the search box exactly like the main list does: filter down to a
 -- few waypoints and only those export, clear the box and the whole book
 -- does. Collapsed zones are ignored either way, since collapsing is a fold
 -- of the display, not a narrowing of what is in the book. Each line is a
@@ -1444,7 +1444,7 @@ local function AcquireHeaderRow(index)
     row = CreateFrame("Button", nil, content)
     row:RegisterForClicks("LeftButtonUp")
 
-    -- Banded background, tinted per group to match the header text colour.
+    -- Banded background, tinted per group to match the header text color.
     row.bg = row:CreateTexture(nil, "BACKGROUND")
     row.bg:SetAllPoints()
 
@@ -2227,7 +2227,7 @@ local function BuildOptionsUI()
     optionsFrame:RegisterForDrag("LeftButton")
     optionsFrame:SetScript("OnDragStart", optionsFrame.StartMoving)
     -- Draggable within a session, but the position is deliberately not saved:
-    -- the panel recentres every time it opens.
+    -- the panel recenters every time it opens.
     optionsFrame:SetScript("OnDragStop", optionsFrame.StopMovingOrSizing)
     optionsFrame:SetClampedToScreen(true)
     optionsFrame:SetFrameStrata("DIALOG")
@@ -2519,7 +2519,7 @@ local function BuildOptionsUI()
         WayBookDB.point = nil
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        Print("List window recentred.")
+        Print("List window recentered.")
     end)
 
     local defaultsBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
@@ -2802,7 +2802,7 @@ local function BuildUI()
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -6, -6)
 
-    -- Labelled buttons along the bottom: left, centre, right.
+    -- Labelled buttons along the bottom: left, center, right.
     local function TextButton(label, anchor, relPoint, x, tipTitle, tipBody, onClick, binding)
         local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         b:SetSize(BUTTON_WIDTH, BUTTON_HEIGHT)
