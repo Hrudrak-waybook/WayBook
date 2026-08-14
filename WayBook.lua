@@ -17,7 +17,11 @@ BINDING_NAME_WAYBOOK_CLEAR_ARROW    = "Clear the arrow"
 local hbd = LibStub and LibStub("HereBeDragons-2.0", true)
 
 local FRAME_WIDTH  = 360
-local FRAME_HEIGHT = 420
+-- 446 rather than 420 since 1.26.8: the group-by row added under the search
+-- box takes 26px, and the frame grew by exactly that so the list area below
+-- it is unchanged.
+local FRAME_HEIGHT = 446
+local GROUP_ROW_Y = -68   -- group-by radios and the sort toggle, under the search box
 local ROW_PADDING = 5   -- row height on top of the glyph height
 local CHECK_INTERVAL = 0.5
 local VISIT_DISTANCE = 15   -- yards; counts as "I went there"
@@ -1003,6 +1007,65 @@ local function RenameWaypoint(entry, newTitle)
     return newUid
 end
 
+-- Moving a waypoint is the same remove-then-add problem as renaming it, and
+-- for the same reason: TomTom's key is built from map, x, y AND title, so x
+-- and y cannot be edited in place any more than the title can. Returns the
+-- current uid on every path except "it's gone", exactly like RenameWaypoint,
+-- so the Edit window can repoint itself and keep editing the same waypoint.
+--
+-- newX and newY arrive as the 0-100 numbers the user actually typed; TomTom
+-- stores fractions, hence the /100 at the point of the add.
+local function MoveWaypoint(entry, newX, newY)
+    local uid = entry.uid
+    if not TomTom:IsValidWaypoint(uid) then
+        Print("That waypoint no longer exists.")
+        return nil
+    end
+
+    local m, oldX, oldY = uid[1], uid[2], uid[3]
+    -- Compare at display precision. Reformatting an unchanged box to one
+    -- decimal place otherwise reads as a move and needlessly rebuilds the
+    -- waypoint, dropping and restoring the arrow on the way through.
+    if ("%.1f"):format(newX) == ("%.1f"):format(oldX * 100)
+        and ("%.1f"):format(newY) == ("%.1f"):format(oldY * 100) then
+        return uid
+    end
+
+    local title = entry.title
+    local wasActive = (activeArrow == uid)
+    local note = GetNote(uid)
+    local tags = GetTags(uid)
+    local visitCount, visitLast = GetVisits(uid)
+
+    SetNote(uid, nil)
+    SetTags(uid, nil)
+    ClearVisits(uid)
+    TomTom:RemoveWaypoint(uid)
+    local newUid = TomTom:AddWaypoint(m, newX / 100, newY / 100, {
+        title        = title,
+        source       = "WayBook",
+        persistent   = true,
+        crazy        = false,
+        cleardistance = KeepOnArrivalEnabled() and 0
+            or (WayBookDB.savedClearDistance or DEFAULT_CLEAR_DISTANCE),
+    })
+
+    if newUid then
+        if note then SetNote(newUid, note) end
+        if #tags > 0 then SetTags(newUid, tags) end
+        if visitCount > 0 then
+            WayBookDB.visits = WayBookDB.visits or {}
+            WayBookDB.visits[NoteKey(newUid)] = { count = visitCount, last = visitLast }
+        end
+    end
+
+    if wasActive and newUid then
+        TomTom:SetCrazyArrow(newUid, TomTom.profile.arrow.arrival, title)
+    end
+
+    return newUid
+end
+
 -- Held in an upvalue rather than passed through StaticPopup's data field,
 -- which is plumbed differently across client versions.
 local deleteTarget
@@ -1684,7 +1747,11 @@ local function MakeCheck(parent, name, label, x, y, getter, setter)
     end
     cb:SetScript("OnClick", function(self)
         setter(self:GetChecked() and true or false)
+        -- Group-by lives in two places since 1.26.8 (Options and the main
+        -- window's own row), so every click has to re-sync both sets, not
+        -- just the panel it was made in.
         RefreshOptions()
+        RefreshMainControls()
         WayBook:Refresh()
     end)
     cb.Sync = function() cb:SetChecked(getter() and true or false) end
@@ -2067,8 +2134,18 @@ local function BuildEditUI()
     noteBox:SetMaxLetters(200)
     noteBox:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, -102)
 
+    local coordHeading = editFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+    coordHeading:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 20, -130)
+    coordHeading:SetText("Coordinates:")
+
+    local coordBox = CreateFrame("EditBox", "WayBookEditCoordBox", editFrame, "InputBoxTemplate")
+    coordBox:SetAutoFocus(false)
+    coordBox:SetSize(330, 20)
+    coordBox:SetMaxLetters(20)
+    coordBox:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, -146)
+
     local tagsHeading = editFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    tagsHeading:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 20, -130)
+    tagsHeading:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 20, -174)
     tagsHeading:SetText("Tags:")
 
     -- Native Blizzard dropdown, no library - confirmed present and used this
@@ -2078,7 +2155,7 @@ local function BuildEditUI()
     -- "click it, done" feel as everything else in this window.
     local addTagDropdown = CreateFrame("Frame", "WayBookEditTagDropdown", editFrame,
         "UIDropDownMenuTemplate")
-    addTagDropdown:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 4, -148)
+    addTagDropdown:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 4, -192)
     UIDropDownMenu_SetWidth(addTagDropdown, 150)
     UIDropDownMenu_SetText(addTagDropdown, "Add existing tag")
 
@@ -2090,12 +2167,15 @@ local function BuildEditUI()
     local GAP_AFTER_CHIPS = 20
     local GAP_HEADING_TO_BOX = 16
     local BOTTOM_MARGIN = 20
-    local MIN_FRAME_HEIGHT = 260   -- a floor only, not a target - the common
+    local MIN_FRAME_HEIGHT = 304   -- a floor only, not a target - the common
                                    -- zero/one-tag case should compute close to
-                                   -- this on its own, not get padded up to it
+                                   -- this on its own, not get padded up to it.
+                                   -- 260 before 1.26.8; grew by the same 44
+                                   -- the Coordinates field pushed everything
+                                   -- below it down by.
 
     local chipContent = CreateFrame("Frame", nil, editFrame)
-    chipContent:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, -186)
+    chipContent:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, -230)
     chipContent:SetSize(CHIP_AREA_WIDTH, 1)
     editFrame.chipContent = chipContent
     editFrame.chips = {}
@@ -2228,6 +2308,48 @@ local function BuildEditUI()
         WayBook:Refresh()
     end
 
+    -- Shows the coordinates the way every other part of the addon does, so
+    -- what you read in the row, the tooltip and the Share line is what you
+    -- get back in this box.
+    local function CoordText(uid)
+        if not uid then return "" end
+        return ("%.1f, %.1f"):format((uid[2] or 0) * 100, (uid[3] or 0) * 100)
+    end
+
+    -- Accepts "45.2, 67.8", "45.2 67.8" and "45,2" style separators equally,
+    -- since the display format uses a comma and typing one back in is the
+    -- obvious thing to do. Anything that is not two numbers inside the map's
+    -- own 0-100 range is refused outright rather than clamped - silently
+    -- moving a waypoint somewhere the user did not ask for is worse than
+    -- saying no.
+    local function CommitCoords()
+        local entry = editFrame.entry
+        if not entry then return end
+        local text = coordBox:GetText() or ""
+        local sx, sy = text:match("^%s*(-?[%d%.]+)%s*[,%s]%s*(-?[%d%.]+)%s*$")
+        local nx, ny = tonumber(sx), tonumber(sy)
+        if not (nx and ny) then
+            Print("Coordinates need to look like 45.2, 67.8.")
+            coordBox:SetText(CoordText(entry.uid))
+            return
+        end
+        if nx < 0 or nx > 100 or ny < 0 or ny > 100 then
+            Print("Coordinates have to be between 0 and 100.")
+            coordBox:SetText(CoordText(entry.uid))
+            return
+        end
+        -- Same repointing RenameWaypoint needs, and for the same reason: a
+        -- move is a remove-then-add, so the uid this window is holding stops
+        -- existing the moment the move succeeds.
+        local newUid = MoveWaypoint(entry, nx, ny)
+        if newUid and TomTom:IsValidWaypoint(newUid) then
+            entry.uid = newUid
+            entry.zone = ZoneName(newUid[1]) or entry.zone
+            coordBox:SetText(CoordText(newUid))
+            WayBook:Refresh()
+        end
+    end
+
     labelBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     labelBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     labelBox:SetScript("OnEditFocusLost", CommitLabel)
@@ -2235,6 +2357,10 @@ local function BuildEditUI()
     noteBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     noteBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     noteBox:SetScript("OnEditFocusLost", CommitNote)
+
+    coordBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    coordBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    coordBox:SetScript("OnEditFocusLost", CommitCoords)
 
     function editFrame:SetEntry(entry)
         self.entry = entry
@@ -2246,6 +2372,7 @@ local function BuildEditUI()
         local entry = self.entry
         labelBox:SetText(entry and entry.title or "")
         noteBox:SetText(entry and GetNote(entry.uid) or "")
+        coordBox:SetText(entry and CoordText(entry.uid) or "")
         RefreshChips()
         labelBox:SetFocus()
         labelBox:HighlightText()
@@ -2257,6 +2384,7 @@ local function BuildEditUI()
     editFrame:SetScript("OnHide", function()
         CommitLabel()
         CommitNote()
+        CommitCoords()
         CloseDropDownMenus()
     end)
 
@@ -2630,6 +2758,7 @@ local function BuildOptionsUI()
         RestyleAll()
         StartWatching()
         RefreshOptions()
+        RefreshMainControls()
         WayBook:Refresh()
         Print("Options restored to defaults. Notes, tags and tag definitions were left alone.")
     end)
@@ -2668,6 +2797,16 @@ end
 function RefreshOptions()
     if not optionsFrame or not optionsFrame.controls then return end
     for _, control in ipairs(optionsFrame.controls) do
+        if control.Sync then control.Sync() end
+    end
+end
+
+-- Same job as RefreshOptions, for the main window's own group-by row. Kept
+-- separate rather than folded in because the two frames are built at
+-- different times and either can exist without the other.
+function RefreshMainControls()
+    if not frame or not frame.controls then return end
+    for _, control in ipairs(frame.controls) do
         if control.Sync then control.Sync() end
     end
 end
@@ -2952,13 +3091,73 @@ local function BuildUI()
         self:ClearFocus()
     end)
 
+    -- Group-by radios and a sort-direction toggle, mirroring the same two
+    -- settings in Options rather than replacing them. Both sets stay ticked
+    -- in step because MakeCheck's OnClick calls RefreshOptions() and
+    -- RefreshMainControls(), so a click in either panel re-syncs the other.
+    local function MainGroupRadio(name, label, mode, x)
+        return MakeCheck(frame, name, label, x, GROUP_ROW_Y,
+            function() return GroupMode() == mode end,
+            function() SetGroupMode(mode) end)
+    end
+
+    local groupNoneCheck = MainGroupRadio("WayBookGroupNone", "None",    "none", 16)
+    local groupZoneCheck = MainGroupRadio("WayBookGroupZone", "By Zone", "zone", 78)
+    local groupTagCheck  = MainGroupRadio("WayBookGroupTag",  "By Tag",  "tag",  158)
+
+    -- Anchored to the frame's right edge rather than to the last radio, so a
+    -- longer label in some future locale pushes nothing off the panel.
+    --
+    -- UI-SortArrow is one downward arrow; the ascending state flips it by
+    -- swapping the texture's top and bottom coords instead of needing a
+    -- second asset. The 0.5625 right coord and the highlight texture are both
+    -- Altoholic's own numbers for this texture (Templates/SortButton.xml),
+    -- which is where it was confirmed present on this client.
+    local sortDirBtn = CreateFrame("Button", "WayBookSortDir", frame)
+    sortDirBtn:SetSize(22, 22)
+    sortDirBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, GROUP_ROW_Y - 1)
+    sortDirBtn:SetHighlightTexture(
+        "Interface\\PaperDollInfoFrame\\UI-Character-Tab-Highlight", "ADD")
+
+    local sortArrow = sortDirBtn:CreateTexture(nil, "ARTWORK")
+    sortArrow:SetTexture("Interface\\Buttons\\UI-SortArrow")
+    sortArrow:SetSize(13, 12)
+    sortArrow:SetPoint("CENTER", sortDirBtn, "CENTER", 0, 0)
+
+    sortDirBtn.Sync = function()
+        if SortDescending() then
+            sortArrow:SetTexCoord(0, 0.5625, 1, 0)
+        else
+            sortArrow:SetTexCoord(0, 0.5625, 0, 1)
+        end
+    end
+
+    sortDirBtn:SetScript("OnClick", function()
+        WayBookDB.sortDescending = not SortDescending()
+        RefreshOptions()
+        RefreshMainControls()
+        WayBook:Refresh()
+    end)
+    sortDirBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Reverse sort order")
+        GameTooltip:AddLine(
+            ("Currently %s. This flips whichever sort is active - set that " ..
+             "under Options."):format(SortDescending() and "reversed" or "normal"),
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    sortDirBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    frame.controls = { groupNoneCheck, groupZoneCheck, groupTagCheck, sortDirBtn }
+
     countText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    countText:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -70)
-    countText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -34, -70)
+    countText:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -96)
+    countText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -34, -96)
     countText:SetJustifyH("LEFT")
 
     scrollFrame = CreateFrame("ScrollFrame", "WayBookScroll", frame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -88)
+    scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -114)
     scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 46)
 
     content = CreateFrame("Frame", nil, scrollFrame)
@@ -2970,6 +3169,9 @@ local function BuildUI()
     frame:SetScript("OnShow", function(self)
         self:Raise()
         WayBookDB.shown = true
+        -- Settings can move while this window is hidden (Options stays usable
+        -- on its own), so re-tick the row rather than trusting its last state.
+        RefreshMainControls()
         WayBook:Refresh()
         if AutoCollapseEnabled() then StartCollapseWatcher() end
     end)
