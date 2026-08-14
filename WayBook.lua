@@ -1138,7 +1138,12 @@ end
 -- returns nil for everything else (goblins are the documented example), so it
 -- tagged some waypoints and silently skipped most. A tag you cannot trust the
 -- absence of is worse than no tag.
-local CLASSIFICATION_TAGS = {
+-- One table instead of nine file-scope locals. Lua caps a function at 200
+-- locals and the main chunk had reached exactly that; the next one added
+-- stopped the file compiling outright. See the gotcha in HANDOFF.md.
+local AutoTag = {}
+
+AutoTag.CLASSIFICATION = {
     rare      = { "Rare" },
     rareelite = { "Rare", "Elite" },
     elite     = { "Elite" },
@@ -1166,7 +1171,6 @@ local CLASSIFICATION_TAGS = {
 -- the player has encountered, and excludes any under a collapsed header in
 -- the reputation UI. A miss produces no tag rather than a wrong one, so this
 -- is left alone instead of expanding the player's own headers behind them.
-local scanTooltip
 
 -- Only a corroborating signal now, never the thing the match depends on.
 --
@@ -1179,7 +1183,7 @@ local scanTooltip
 --
 -- Note C_Reputation.GetNumFactions does not exist on this client even though
 -- C_Reputation itself does, hence the fallback to the global.
-local function KnownFactionNames()
+function AutoTag.KnownFactionNames()
     local names = {}
     local getData = (C_Reputation and C_Reputation.GetFactionDataByIndex)
         or function(i)
@@ -1200,14 +1204,14 @@ end
 -- The localized word the tooltip's level line starts with, used to tell a
 -- level line apart from a subtitle. Derived from the game's own format string
 -- rather than hardcoded, the same way Leatrix_Plus does it on this client.
-local LEVEL_WORD = TOOLTIP_UNIT_LEVEL
+AutoTag.LEVEL_WORD = TOOLTIP_UNIT_LEVEL
     and strtrim((TOOLTIP_UNIT_LEVEL:gsub("%%s", "")))
     or LEVEL or "Level"
 
 -- Some faction names carry an article the game shows but nobody says: "The
 -- Tillers", "The Klaxxi". Dropped so the tag reads the way the faction is
 -- actually referred to, and so it lines up with tags defined by hand.
-local function StripArticle(name)
+function AutoTag.StripArticle(name)
     return (name:gsub("^The%s+", ""))
 end
 
@@ -1216,7 +1220,7 @@ end
 -- information here. Removed with a plain find rather than a pattern, because
 -- faction names contain characters Lua patterns treat as magic - "Shado-Pan"
 -- would otherwise match far more than intended.
-local function RoleFromSubtitle(subtitle, faction, factionTag)
+function AutoTag.RoleFromSubtitle(subtitle, faction, factionTag)
     local text = subtitle
     -- Longest form first, so "The Tillers Quartermaster" loses the whole
     -- faction rather than being left holding a stray "The".
@@ -1237,25 +1241,41 @@ local function RoleFromSubtitle(subtitle, faction, factionTag)
     return text
 end
 
+-- A tooltip line carrying a percentage is a live status readout, not part of
+-- the unit's identity. "100% Threat" shows up while you are in combat with
+-- the unit and went straight into the tag list as if it were a subtitle.
+--
+-- There is no localized global for that line on this client - checked, and
+-- the only THREAT constants installed here are quest names - so this keys off
+-- the percent sign, which survives translation where matching the English
+-- word would not.
+--
+-- Applied to both the subtitle and the faction candidate. Which of the two
+-- slots the threat line actually landed in is not distinguishable from the
+-- symptom, and rejecting it in both costs nothing.
+function AutoTag.IsStatusLine(text)
+    return text:find("%%") ~= nil
+end
+
 -- Reads the target's tooltip once and returns both the faction line and the
 -- subtitle, since finding either needs the whole populated tooltip anyway.
-local function ScanTargetTooltip()
-    if not scanTooltip then
-        scanTooltip = CreateFrame("GameTooltip", "WayBookScanTooltip", UIParent,
+function AutoTag.ScanTargetTooltip()
+    if not AutoTag.scanTooltip then
+        AutoTag.scanTooltip = CreateFrame("GameTooltip", "WayBookScanTooltip", UIParent,
             "GameTooltipTemplate")
     end
-    scanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-    scanTooltip:ClearLines()
-    scanTooltip:SetUnit("target")
+    AutoTag.scanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    AutoTag.scanTooltip:ClearLines()
+    AutoTag.scanTooltip:SetUnit("target")
 
     local lines, levelAt = {}, nil
     -- From line 2: line 1 is always the unit's own name, and skipping it
     -- stops an NPC named after its faction from tagging itself off its title.
-    for i = 2, scanTooltip:NumLines() do
+    for i = 2, AutoTag.scanTooltip:NumLines() do
         local line = _G["WayBookScanTooltipTextLeft" .. i]
         local text = line and line:GetText()
         lines[i] = (text ~= "" and text) or nil
-        if lines[i] and not levelAt and lines[i]:find(LEVEL_WORD, 1, true) then
+        if lines[i] and not levelAt and lines[i]:find(AutoTag.LEVEL_WORD, 1, true) then
             levelAt = i
         end
     end
@@ -1272,13 +1292,15 @@ local function ScanTargetTooltip()
     -- or has never been encountered at all.
     local subtitle = (levelAt ~= 2) and lines[2] or nil
     local faction = levelAt and lines[levelAt + 1] or nil
+    if subtitle and AutoTag.IsStatusLine(subtitle) then subtitle = nil end
+    if faction and AutoTag.IsStatusLine(faction) then faction = nil end
 
     -- Fall back to a reputation-list match anywhere in the tooltip if the
     -- structural read came up empty - a tooltip with no level line at all
     -- would otherwise yield nothing.
     if not faction then
-        local known = KnownFactionNames()
-        for i = 2, scanTooltip:NumLines() do
+        local known = AutoTag.KnownFactionNames()
+        for i = 2, AutoTag.scanTooltip:NumLines() do
             if lines[i] and known[lines[i]] then
                 faction = lines[i]
                 break
@@ -1289,18 +1311,18 @@ local function ScanTargetTooltip()
     return faction, subtitle
 end
 
-local function TargetAutoTags()
+function AutoTag.TargetAutoTags()
     local tags = {}
-    for _, tagName in ipairs(CLASSIFICATION_TAGS[UnitClassification("target") or ""] or {}) do
+    for _, tagName in ipairs(AutoTag.CLASSIFICATION[UnitClassification("target") or ""] or {}) do
         tags[#tags + 1] = tagName
     end
 
-    local faction, subtitle = ScanTargetTooltip()
-    local factionTag = faction and StripArticle(faction)
+    local faction, subtitle = AutoTag.ScanTargetTooltip()
+    local factionTag = faction and AutoTag.StripArticle(faction)
     if factionTag and factionTag ~= "" then tags[#tags + 1] = factionTag end
 
     if subtitle then
-        local role = RoleFromSubtitle(subtitle, faction, factionTag)
+        local role = AutoTag.RoleFromSubtitle(subtitle, faction, factionTag)
         if role then tags[#tags + 1] = role end
     end
     return tags
@@ -1353,7 +1375,7 @@ local function AddTargetWaypoint()
 
     -- Read while the target is definitely still selected, before anything
     -- else happens.
-    local autoTags = TargetAutoTags()
+    local autoTags = AutoTag.TargetAutoTags()
 
     local uid = TomTom:AddWaypoint(m, x, y, {
         title        = name,
