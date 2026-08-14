@@ -2192,8 +2192,10 @@ local function BuildEditUI()
     local CHIP_ROW_STEP = BADGE_HEIGHT + 6
     local GAP_AFTER_CHIPS = 20
     local GAP_HEADING_TO_BOX = 16
+    local GAP_BEFORE_CLOSE = 16
+    local CLOSE_BUTTON_HEIGHT = 22
     local BOTTOM_MARGIN = 20
-    local MIN_FRAME_HEIGHT = 304   -- a floor only, not a target - the common
+    local MIN_FRAME_HEIGHT = 342   -- a floor only, not a target - the common
                                    -- zero/one-tag case should compute close to
                                    -- this on its own, not get padded up to it.
                                    -- 260 before 1.26.8; grew by the same 44
@@ -2217,6 +2219,15 @@ local function BuildEditUI()
     local addBtn = CreateFrame("Button", nil, editFrame, "UIPanelButtonTemplate")
     addBtn:SetSize(70, 22)
     addBtn:SetText("Add")
+
+    -- Positioned by RefreshChips rather than here, since everything below the
+    -- chip area moves with however many rows the chips wrapped onto. Hiding
+    -- the frame runs the same OnHide the X does, so the label, note and
+    -- coordinates all commit on the way out.
+    local closeBtn = CreateFrame("Button", nil, editFrame, "UIPanelButtonTemplate")
+    closeBtn:SetSize(100, 22)
+    closeBtn:SetText("Close")
+    closeBtn:SetScript("OnClick", function() editFrame:Hide() end)
 
     -- Rebuilds the chip list against the waypoint's current tags, wrapping
     -- left to right, then repositions everything below the chip area (and
@@ -2267,8 +2278,12 @@ local function BuildEditUI()
 
         -- newBox and addBtn share the same bottom edge by construction
         -- (addBtn sits 2px higher but is 2px taller) - newBoxY - 20 is that
-        -- edge; its distance below the frame's top is what needs the margin.
-        local contentBottomY = newBoxY - 20
+        -- edge. Close sits centred below it, and the frame ends below Close.
+        local closeBtnY = newBoxY - 20 - GAP_BEFORE_CLOSE
+        closeBtn:ClearAllPoints()
+        closeBtn:SetPoint("TOP", editFrame, "TOP", 0, closeBtnY)
+
+        local contentBottomY = closeBtnY - CLOSE_BUTTON_HEIGHT
         editFrame:SetHeight(math.max(-contentBottomY + BOTTOM_MARGIN, MIN_FRAME_HEIGHT))
     end
     editFrame.RefreshChips = RefreshChips
@@ -2913,9 +2928,20 @@ local function CancelCollapse()
     end
 end
 
+-- Set only for the duration of a collapse, and read by the main frame's own
+-- OnHide. Collapsing is not closing: the list folds away to the bar while
+-- Options, Export, Share and Edit stay exactly where they are, to be closed
+-- by hand when the user is done with them. Closing the main window yourself
+-- still takes all four with it, which is what 1.24.1 added the cascade for.
+local collapsingToBar = false
+
 local function CollapseToBar()
     if not AutoCollapseEnabled() then return end
-    if frame then frame:Hide() end
+    if frame then
+        collapsingToBar = true
+        frame:Hide()
+        collapsingToBar = false
+    end
 end
 
 function StopCollapseWatcher()
@@ -3273,10 +3299,17 @@ local function BuildUI()
         -- Closing the book closes everything it opened - a stray Options,
         -- Export, Share or Edit window left on screen with no main list
         -- behind it doesn't make sense, however it got there.
-        if optionsFrame then optionsFrame:Hide() end
-        if exportFrame then exportFrame:Hide() end
-        if shareFrame then shareFrame:Hide() end
-        if editFrame then editFrame:Hide() end
+        --
+        -- Skipped while collapsing to the bar. That is the list getting out
+        -- of the way, not the user closing anything, and taking a window they
+        -- are part way through using with it made the bar unusable for
+        -- anything except browsing the list.
+        if not collapsingToBar then
+            if optionsFrame then optionsFrame:Hide() end
+            if exportFrame then exportFrame:Hide() end
+            if shareFrame then shareFrame:Hide() end
+            if editFrame then editFrame:Hide() end
+        end
     end)
 
     if WayBookDB.point then
