@@ -1147,11 +1147,67 @@ local CLASSIFICATION_TAGS = {
     -- would put a tag on almost every waypoint and say nothing.
 }
 
+-- Reputation faction, read off the target's own tooltip.
+--
+-- No API maps an NPC to its reputation faction. C_Reputation only enumerates
+-- the player's own standings, and UnitFactionGroup answers a different
+-- question badly (see above). The tooltip does carry it: probing Gina Mudclaw
+-- on this client returned name / "Tillers Quartermaster" / "Level 90" /
+-- "The Tillers".
+--
+-- That position is not fixed - an NPC with no subtitle shifts every line up
+-- by one, and a hostile one may have no faction line at all - so this matches
+-- text against the set of faction names the player actually knows rather than
+-- reading a line number. Matching that way is also what stops a subtitle or a
+-- creature type from becoming a junk tag: anything that is not an exact
+-- faction name is ignored.
+--
+-- Coverage is bounded by what the reputation list returns, which is factions
+-- the player has encountered, and excludes any under a collapsed header in
+-- the reputation UI. A miss produces no tag rather than a wrong one, so this
+-- is left alone instead of expanding the player's own headers behind them.
+local scanTooltip
+
+local function KnownFactionNames()
+    local names = {}
+    local getData = C_Reputation and C_Reputation.GetFactionDataByIndex
+    local getNum = (C_Reputation and C_Reputation.GetNumFactions) or GetNumFactions
+    if not (getData and getNum) then return names end
+    for i = 1, (getNum() or 0) do
+        local data = getData(i)
+        -- Headers are kept too: a few of them carry reputation in their own
+        -- right, and an exact-match lookup makes including them costless.
+        if data and data.name then names[data.name] = true end
+    end
+    return names
+end
+
+local function TargetFactionTag()
+    if not scanTooltip then
+        scanTooltip = CreateFrame("GameTooltip", "WayBookScanTooltip", UIParent,
+            "GameTooltipTemplate")
+    end
+    scanTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    scanTooltip:ClearLines()
+    scanTooltip:SetUnit("target")
+
+    local known = KnownFactionNames()
+    -- From line 2: line 1 is always the unit's own name, and skipping it
+    -- stops an NPC named after its faction from tagging itself off its title.
+    for i = 2, scanTooltip:NumLines() do
+        local line = _G["WayBookScanTooltipTextLeft" .. i]
+        local text = line and line:GetText()
+        if text and known[text] then return text end
+    end
+end
+
 local function TargetAutoTags()
     local tags = {}
     for _, tagName in ipairs(CLASSIFICATION_TAGS[UnitClassification("target") or ""] or {}) do
         tags[#tags + 1] = tagName
     end
+    local faction = TargetFactionTag()
+    if faction then tags[#tags + 1] = faction end
     return tags
 end
 
