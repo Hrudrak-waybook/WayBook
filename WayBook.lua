@@ -2940,6 +2940,22 @@ local function ScheduleCollapse()
     end)
 end
 
+-- Frames that belong to a WayBook interaction without being WayBook's own
+-- windows: Blizzard's shared dropdown lists, which the Edit window's tag
+-- picker opens into, and the shared StaticPopups, which the delete
+-- confirmation uses. Both are top-level frames parented to UIParent rather
+-- than to anything of WayBook's, so the six checks below never saw them and
+-- the mouse moving onto one read as "left the interface entirely".
+--
+-- This is the 1.26.1 bug one level further out. There the frames the watcher
+-- missed were children sitting inside the windows; here they are siblings
+-- sitting alongside them. Anything WayBook opens that is not parented to one
+-- of its own frames needs adding here.
+local BORROWED_FRAMES = { "DropDownList1", "DropDownList2" }
+for i = 1, (STATICPOPUP_NUMDIALOGS or 4) do
+    BORROWED_FRAMES[#BORROWED_FRAMES + 1] = "StaticPopup" .. i
+end
+
 local function IsMouseOverInterface()
     if barFrame    and barFrame:IsShown()    and barFrame:IsMouseOver()    then return true end
     if frame       and frame:IsShown()       and frame:IsMouseOver()       then return true end
@@ -2947,6 +2963,10 @@ local function IsMouseOverInterface()
     if exportFrame and exportFrame:IsShown() and exportFrame:IsMouseOver() then return true end
     if shareFrame  and shareFrame:IsShown()  and shareFrame:IsMouseOver()  then return true end
     if editFrame   and editFrame:IsShown()   and editFrame:IsMouseOver()   then return true end
+    for _, name in ipairs(BORROWED_FRAMES) do
+        local f = _G[name]
+        if f and f:IsShown() and f:IsMouseOver() then return true end
+    end
     return false
 end
 
