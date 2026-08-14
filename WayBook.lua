@@ -112,6 +112,11 @@ local frame, scrollFrame, content, countText, searchBox
 -- current sort, grouping and search, none of which are known at the moment
 -- the waypoint is created.
 local pendingScrollUid
+-- Same handoff, for the new-waypoint flash. Kept separate from the scroll
+-- request because the two are consumed differently: the scroll happens once,
+-- inside the refresh that finds the row, while the flash outlives that refresh
+-- and has to keep finding its row for the next second and a half.
+local pendingFlashUid
 local optionsFrame
 local exportFrame
 local shareFrame
@@ -169,6 +174,16 @@ local function ShowTags()       return Setting("showTags", false) end
 local function ShowCoords()     return Setting("showCoords", false) end
 local function ShowDistance()   return Setting("showDistance", false) end
 local function ColorblindMode() return Setting("colorblindMode", false) end
+
+-- Auto-tagging a waypoint made from a selected target. All four default on:
+-- this was unconditional before 1.26.21, and putting it behind a switch should
+-- not quietly take the feature away from anyone already relying on it.
+local function AutoTagEnabled()    return Setting("autoTag", true) end
+local function AutoTagRank()       return Setting("autoTagRank", true) end
+local function AutoTagFaction()    return Setting("autoTagFaction", true) end
+-- The NPC's subtitle role: Flight Master, Innkeeper, Quartermaster. Labeled
+-- Profession in Options because that is how it reads in game.
+local function AutoTagProfession() return Setting("autoTagProfession", true) end
 
 local function ActiveZoneColors()
     return ColorblindMode() and K.ZONE_COLORS_COLORBLIND or K.ZONE_COLORS
@@ -1324,17 +1339,30 @@ end
 
 function AutoTag.TargetAutoTags()
     local tags = {}
-    for _, tagName in ipairs(AutoTag.CLASSIFICATION[UnitClassification("target") or ""] or {}) do
-        tags[#tags + 1] = tagName
+    if not AutoTagEnabled() then return tags end
+
+    if AutoTagRank() then
+        for _, tagName in ipairs(AutoTag.CLASSIFICATION[UnitClassification("target") or ""] or {}) do
+            tags[#tags + 1] = tagName
+        end
     end
 
-    local faction, subtitle = AutoTag.ScanTargetTooltip()
-    local factionTag = faction and AutoTag.StripArticle(faction)
-    if factionTag and factionTag ~= "" then tags[#tags + 1] = factionTag end
+    -- One tooltip scan feeds both remaining tags, so it is skipped entirely
+    -- when neither is wanted. It still runs for Profession alone, because
+    -- RoleFromSubtitle needs the faction name to cut "Tillers Quartermaster"
+    -- down to "Quartermaster" even when the faction itself is not being tagged.
+    if AutoTagFaction() or AutoTagProfession() then
+        local faction, subtitle = AutoTag.ScanTargetTooltip()
+        local factionTag = faction and AutoTag.StripArticle(faction)
 
-    if subtitle then
-        local role = AutoTag.RoleFromSubtitle(subtitle, faction, factionTag)
-        if role then tags[#tags + 1] = role end
+        if AutoTagFaction() and factionTag and factionTag ~= "" then
+            tags[#tags + 1] = factionTag
+        end
+
+        if AutoTagProfession() and subtitle then
+            local role = AutoTag.RoleFromSubtitle(subtitle, faction, factionTag)
+            if role then tags[#tags + 1] = role end
+        end
     end
     return tags
 end
@@ -1374,7 +1402,10 @@ local function AddTargetWaypoint()
             cleardistance = KeepOnArrivalEnabled() and 0
                 or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
         })
-        if uid then PromptEdit({ uid = uid, title = "New waypoint" }) end
+        if uid then
+            pendingFlashUid = uid
+            PromptEdit({ uid = uid, title = "New waypoint" })
+        end
         return uid
     end
 
@@ -1411,6 +1442,7 @@ local function AddTargetWaypoint()
         -- Tagged before scrolling, so the group this lands under is the one
         -- ScrollToWaypoint opens.
         ScrollToWaypoint(uid)
+        pendingFlashUid = uid
         if #applied > 0 then
             Print(("Saved %s. Tagged %s."):format(name, table.concat(applied, ", ")))
         else
@@ -1559,6 +1591,16 @@ local badgeFontFile, badgeFontFlags
 K.QUEST_TAG_ICON = 136797
 K.QUEST_ICON_GAP = 3   -- matches the gap row.del already keeps before row.text
 
+-- Bullseye on the Edit window's "stamp my position" button. A plain icon path
+-- rather than a file ID, so swapping it is a one-line edit if a better one
+-- turns up. TEXCOORD trims the border every Interface\Icons file carries,
+-- which otherwise reads as a grey frame at this size.
+-- Confirmed present on this client: SetTexture resolved it to fileID 236188,
+-- and SetTexture leaves a texture unset (GetTexture nil) when a file is
+-- missing, so a returned id is proof the art loaded rather than a guess.
+K.SETPOS_ICON    = "Interface\\Icons\\Ability_Hunter_MarkedForDeath"
+K.SETPOS_TEXCOORD = { 0.08, 0.92, 0.08, 0.92 }
+
 local function BadgeFont()
     if not badgeFontFile then
         local probe = UIParent:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
@@ -1693,6 +1735,15 @@ local function AcquireEntryRow(index)
     row.highlight:SetAllPoints()
     Tint(row.highlight, 1, 1, 1, 0.12)
     row.highlight:Hide()
+
+    -- The new-waypoint flash. On BORDER rather than BACKGROUND so it reads
+    -- over the hover highlight when both happen at once, and still sits under
+    -- ARTWORK, where the row's own text lives. Tag badges are child frames, so
+    -- they draw above every layer here regardless.
+    row.flash = row:CreateTexture(nil, "BORDER")
+    row.flash:SetAllPoints()
+    Tint(row.flash, K.FLASH_COLOR[1], K.FLASH_COLOR[2], K.FLASH_COLOR[3], K.FLASH_ALPHA)
+    row.flash:Hide()
 
     row:SetScript("OnEnter", function(self)
         self.highlight:Show()
@@ -1831,6 +1882,61 @@ local function UpdateDistanceTicker()
     end
 end
 
+-- New-waypoint flash. A waypoint you just saved can land anywhere in the list
+-- depending on the sort, the grouping and whatever is in the search box, so
+-- the row blinks a few times to say "here".
+--
+-- Once per waypoint, ever. pendingFlashUid is set at creation and cleared by
+-- the refresh that starts the sequence, and nothing re-arms it.
+K.FLASH_COLOR    = { 1, 0.92, 0.55 }
+K.FLASH_ALPHA    = 0.4
+K.FLASH_COUNT    = 3
+K.FLASH_INTERVAL = 0.25   -- on for one, off for the next: a flash every 0.5s
+
+local flashUid, flashTicker
+
+local function HideAllFlashes()
+    for _, row in ipairs(entryRows) do
+        if row.flash then row.flash:Hide() end
+    end
+end
+
+local function StopFlash()
+    if flashTicker then
+        flashTicker:Cancel()
+        flashTicker = nil
+    end
+    flashUid = nil
+    HideAllFlashes()
+end
+
+local function StartFlash(uid)
+    StopFlash()
+    if not uid then return end
+    flashUid = uid
+
+    local tick = 0
+    flashTicker = C_Timer.NewTicker(K.FLASH_INTERVAL, function()
+        tick = tick + 1
+        HideAllFlashes()
+
+        if tick % 2 == 1 then
+            -- The owning row is looked up fresh on every tick rather than
+            -- captured once. Rows are recycled, and a rebuild can land in the
+            -- middle of the sequence - the distance ticker alone fires one a
+            -- second - which would otherwise leave the flash on some unrelated
+            -- waypoint that inherited the frame.
+            for _, row in ipairs(entryRows) do
+                if row:IsShown() and row.entry and row.entry.uid == flashUid then
+                    row.flash:Show()
+                end
+            end
+        end
+
+        if tick >= K.FLASH_COUNT * 2 then StopFlash() end
+    end, K.FLASH_COUNT * 2)
+end
+
 function WayBook:Refresh()
     UpdateDistanceTicker()
     if not frame or not frame:IsShown() then return end
@@ -1953,6 +2059,14 @@ function WayBook:Refresh()
             scrollFrame:SetVerticalScroll(math.min(scrollTargetY, maxScroll))
         end
         pendingScrollUid = nil
+    end
+
+    -- Started from here rather than from the add itself, so the sequence only
+    -- begins once a refresh has actually laid the row out. With the window
+    -- closed this waits, and the flash plays when it next opens.
+    if pendingFlashUid then
+        StartFlash(pendingFlashUid)
+        pendingFlashUid = nil
     end
 
     if entryTotal == 0 then
@@ -2403,11 +2517,37 @@ local function BuildEditUI()
     coordHeading:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 20, -130)
     coordHeading:SetText("Coordinates:")
 
+    -- 28 narrower than the label and note boxes above it, to leave room for
+    -- the position button on its right. Ten characters of "45.2, 67.8" never
+    -- came close to filling the old width anyway.
     local coordBox = CreateFrame("EditBox", "WayBookEditCoordBox", editFrame, "InputBoxTemplate")
     coordBox:SetAutoFocus(false)
-    coordBox:SetSize(330, 20)
+    coordBox:SetSize(302, 20)
     coordBox:SetMaxLetters(20)
     coordBox:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 26, -146)
+
+    -- Stamps your current position into the box. Same 22x22 as the main
+    -- window's sort-direction button. Its OnClick is wired further down, once
+    -- CommitCoords exists to do the actual move.
+    local setPosBtn = CreateFrame("Button", "WayBookEditSetPos", editFrame)
+    setPosBtn:SetSize(22, 22)
+    setPosBtn:SetPoint("LEFT", coordBox, "RIGHT", 6, 0)
+    setPosBtn:SetHighlightTexture(
+        "Interface\\PaperDollInfoFrame\\UI-Character-Tab-Highlight", "ADD")
+
+    local setPosIcon = setPosBtn:CreateTexture(nil, "ARTWORK")
+    setPosIcon:SetTexture(K.SETPOS_ICON)
+    setPosIcon:SetTexCoord(K.SETPOS_TEXCOORD[1], K.SETPOS_TEXCOORD[2],
+                           K.SETPOS_TEXCOORD[3], K.SETPOS_TEXCOORD[4])
+    setPosIcon:SetSize(16, 16)
+    setPosIcon:SetPoint("CENTER", setPosBtn, "CENTER", 0, 0)
+
+    setPosBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Set coordinates to your current position")
+        GameTooltip:Show()
+    end)
+    setPosBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local tagsHeading = editFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     tagsHeading:SetPoint("TOPLEFT", editFrame, "TOPLEFT", 20, -174)
@@ -2650,6 +2790,27 @@ local function BuildEditUI()
     coordBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     coordBox:SetScript("OnEditFocusLost", CommitCoords)
 
+    -- Writes into the box and then commits through exactly the same path a
+    -- typed edit takes, so the validation, the move and the refresh all
+    -- behave identically however the numbers got there.
+    setPosBtn:SetScript("OnClick", function()
+        local entry = editFrame.entry
+        if not entry then return end
+        local m, x, y = TomTom:GetCurrentPlayerPosition()
+        if not (m and x and y) then
+            Print("Could not work out your position here.")
+            return
+        end
+        -- A move keeps the waypoint on its own map, so a position read
+        -- somewhere else would drop it at those numbers in the wrong zone.
+        if entry.uid and entry.uid[1] ~= m then
+            Print("You are not in that waypoint's zone.")
+            return
+        end
+        coordBox:SetText(("%.1f, %.1f"):format(x * 100, y * 100))
+        CommitCoords()
+    end)
+
     -- EditBoxes do not chain to one another on their own; each one has to be
     -- told what Tab means. HandyNotes and DBM-GUI wire theirs the same way on
     -- this client. The ring wraps, and Shift-Tab walks it backwards.
@@ -2727,7 +2888,16 @@ local function BuildOptionsUI()
     local template = BackdropTemplateMixin and "BackdropTemplate" or nil
 
     optionsFrame = CreateFrame("Frame", "WayBookOptionsFrame", UIParent, template)
-    optionsFrame:SetSize(330, 616)
+    -- Three columns since 1.26.22, laid out as two rows of sections:
+    -- General / Group by: / Sort by: across the top, then Show in the list: /
+    -- Auto-Tag: below. Column 1 is the widest because "Use colorblind-friendly
+    -- colors" sets its floor; 2 and 3 only ever hold short labels.
+    --
+    -- Headings sit on COLn, checkboxes two pixels left of it (the template's
+    -- box has its own padding), and a sub-checkbox indents ten right.
+    -- Height puts the Export button 54 below the font slider's top edge, the
+    -- same gap the two-column panel shipped with.
+    optionsFrame:SetSize(490, 618)
     optionsFrame:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
@@ -2755,7 +2925,13 @@ local function BuildOptionsUI()
     local close = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -6, -6)
 
-    MakeSectionHeading(optionsFrame, 22, -42, "General")
+    -- Row one runs the full width in three columns. Row two holds only two
+    -- sections, so it gets its own pair of x positions, spaced to sit centered
+    -- under row one rather than left-aligned against it.
+    local COL1, COL2, COL3 = 22, 232, 352
+    local R2COL1, R2COL2 = 105, 285
+
+    MakeSectionHeading(optionsFrame, COL1, -42, "General")
 
     local keepCheck = MakeCheck(optionsFrame, "WayBookOptKeep",
         "Keep waypoints on arrival", 20, -62,
@@ -2840,17 +3016,15 @@ local function BuildOptionsUI()
     end)
     barCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Right-hand column, level with the new "General" heading on the left.
-    -- Moved here in 1.21.1, out of the way of the left column's
-    -- checkbox run.
-    MakeSectionHeading(optionsFrame, 180, -42, "Group by:")
+    -- Column 3, top row.
+    MakeSectionHeading(optionsFrame, COL3, -42, "Group by:")
 
     -- Radios, same pattern as "Sort by:" below: the setter always writes its
     -- own mode regardless of the checkbox's own checked/unchecked state, and
     -- RefreshOptions() re-syncs every checkbox afterward so only the true
     -- match ends up ticked.
     local function GroupRadio(name, label, mode, y)
-        return MakeCheck(optionsFrame, name, label, 188, y,
+        return MakeCheck(optionsFrame, name, label, COL3 - 2, y,
             function() return GroupMode() == mode end,
             function() SetGroupMode(mode) end)
     end
@@ -2872,14 +3046,15 @@ local function BuildOptionsUI()
     end)
     groupTagCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    MakeSectionHeading(optionsFrame, 22, -218, "Show in the list:")
+    -- Second row, left of the centered pair.
+    MakeSectionHeading(optionsFrame, R2COL1, -218, "Show in the list:")
 
     local labelCheck = MakeCheck(optionsFrame, "WayBookOptLabel",
-        "Label", 30, -238, ShowLabel,
+        "Label", R2COL1 + 8, -238, ShowLabel,
         function(v) SetColumn("showLabel", v) end)
 
     local zoneCheck = MakeCheck(optionsFrame, "WayBookOptZone",
-        "Zone", 30, -262, ShowZone,
+        "Zone", R2COL1 + 8, -262, ShowZone,
         function(v) SetColumn("showZone", v) end)
 
     -- Redundant while grouping by zone is on, so it goes flat and unclickable
@@ -2911,7 +3086,7 @@ local function BuildOptionsUI()
 
     -- Not a text column: this gates whether tag badges draw under a row.
     local tagsCheck = MakeCheck(optionsFrame, "WayBookOptTags",
-        "Tags", 30, -286, ShowTags,
+        "Tags", R2COL1 + 8, -286, ShowTags,
         function(v) WayBookDB.showTags = v end)
 
     -- Redundant while grouping by tag is on, exactly like Zone above, so it
@@ -2948,15 +3123,15 @@ local function BuildOptionsUI()
     tagsCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local coordCheck = MakeCheck(optionsFrame, "WayBookOptCoords",
-        "Coordinates", 30, -310, ShowCoords,
+        "Coordinates", R2COL1 + 8, -310, ShowCoords,
         function(v) SetColumn("showCoords", v) end)
 
     local visitCheck = MakeCheck(optionsFrame, "WayBookOptVisitCol",
-        "Visits", 30, -334, ShowVisits,
+        "Visits", R2COL1 + 8, -334, ShowVisits,
         function(v) SetColumn("showVisits", v) end)
 
     local distCheck = MakeCheck(optionsFrame, "WayBookOptDistCol",
-        "Distance", 30, -358, ShowDistance,
+        "Distance", R2COL1 + 8, -358, ShowDistance,
         function(v) SetColumn("showDistance", v) end)
     distCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2969,20 +3144,21 @@ local function BuildOptionsUI()
     end)
     distCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    MakeSectionHeading(optionsFrame, 180, -218, "Sort by:")
+    -- Column 2, top row, level with "General".
+    MakeSectionHeading(optionsFrame, COL2, -42, "Sort by:")
 
     -- Mutually exclusive, so each one just writes the mode and the others
     -- untick themselves when RefreshOptions re-syncs.
     local function SortRadio(name, label, mode, y)
-        return MakeCheck(optionsFrame, name, label, 188, y,
+        return MakeCheck(optionsFrame, name, label, COL2 - 2, y,
             function() return SortMode() == mode end,
             function() WayBookDB.sortMode = mode end)
     end
 
-    local sortLabelCheck  = SortRadio("WayBookOptSortLabel",  "Label",        "label",  -238)
-    local sortVisitsCheck = SortRadio("WayBookOptSortVisits", "Visits",       "visits", -262)
-    local sortRecentCheck = SortRadio("WayBookOptSortRecent", "Last visited", "recent", -286)
-    local sortNearCheck   = SortRadio("WayBookOptSortNear",   "Nearest",      "distance", -310)
+    local sortLabelCheck  = SortRadio("WayBookOptSortLabel",  "Label",        "label",  -62)
+    local sortVisitsCheck = SortRadio("WayBookOptSortVisits", "Visits",       "visits", -86)
+    local sortRecentCheck = SortRadio("WayBookOptSortRecent", "Last visited", "recent", -110)
+    local sortNearCheck   = SortRadio("WayBookOptSortNear",   "Nearest",      "distance", -134)
     sortNearCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Nearest")
@@ -2994,8 +3170,76 @@ local function BuildOptionsUI()
     end)
     sortNearCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+    -- Second row, right of the centered pair. The master check sits under the
+    -- heading and the three below it are indented, greying out when it is off.
+    MakeSectionHeading(optionsFrame, R2COL2, -218, "Auto-Tagging")
+
+    local autoTagCheck = MakeCheck(optionsFrame, "WayBookOptAutoTag",
+        "Auto-tag NPCs", R2COL2 - 2, -238,
+        AutoTagEnabled,
+        function(v) WayBookDB.autoTag = v end)
+    autoTagCheck:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Auto-tag NPCs")
+        GameTooltip:AddLine(
+            "Tags a waypoint as you create it from a selected target. Only ever " ..
+            "at that moment: nothing already in the book is retagged, and tags " ..
+            "added this way can be removed like any other.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    autoTagCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- The same flat-and-unclickable treatment the Zone and Tags columns get,
+    -- driven here by the master check rather than by a grouping mode.
+    local function AutoTagSub(name, label, key, y, tip)
+        local cb = MakeCheck(optionsFrame, name, label, R2COL2 + 8, y,
+            function() return Setting(key, true) end,
+            function(v) WayBookDB[key] = v end)
+        local baseSync = cb.Sync
+        local cbText = cb.Text or cb.text or _G[name .. "Text"]
+        cb.Sync = function()
+            baseSync()
+            local on = AutoTagEnabled()
+            if on then cb:Enable() else cb:Disable() end
+            if cbText then
+                if on then
+                    cbText:SetTextColor(1, 0.82, 0)
+                else
+                    cbText:SetTextColor(0.5, 0.5, 0.5)
+                end
+            end
+        end
+        cb:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(label)
+            if AutoTagEnabled() then
+                GameTooltip:AddLine(tip, 1, 1, 1, true)
+            else
+                GameTooltip:AddLine("Off because Auto-tag NPCs is off.", 1, 1, 1, true)
+            end
+            GameTooltip:Show()
+        end)
+        cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return cb
+    end
+
+    local autoRankCheck = AutoTagSub("WayBookOptAutoRank",
+        "Rare/Elite", "autoTagRank", -262,
+        "Tags Rare, Elite, or both, from the target's own classification.")
+
+    local autoFactionCheck = AutoTagSub("WayBookOptAutoFaction",
+        "Rep faction", "autoTagFaction", -286,
+        "Tags the reputation the NPC belongs to, read off its tooltip, with any " ..
+        "leading \"The\" dropped. Klaxxi, Tillers, Golden Lotus.")
+
+    local autoProfCheck = AutoTagSub("WayBookOptAutoProfession",
+        "Profession", "autoTagProfession", -310,
+        "Tags what the NPC does, from the title under its name. Flight Master, " ..
+        "Innkeeper, Quartermaster. The faction is stripped out first, so " ..
+        "\"Tillers Quartermaster\" becomes Quartermaster.")
+
     local arriveSlider = MakeSlider(optionsFrame, "WayBookOptArrive",
-        "Clear arrow within (yards)", 36, -408, 0, 60, 1,
+        "Clear arrow within (yards)", 120, -410, 0, 60, 1,
         ArriveDistance,
         function(v)
             WayBookDB.arriveDistance = v
@@ -3012,7 +3256,7 @@ local function BuildOptionsUI()
     arriveSlider:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     local fontSlider = MakeSlider(optionsFrame, "WayBookOptFont",
-        "List font size", 36, -466, K.MIN_LIST_FONT_SIZE, K.MAX_LIST_FONT_SIZE, 1,
+        "List font size", 120, -468, K.MIN_LIST_FONT_SIZE, K.MAX_LIST_FONT_SIZE, 1,
         ListFontSize,
         function(v)
             WayBookDB.listFontSize = v
@@ -3072,6 +3316,10 @@ local function BuildOptionsUI()
         WayBookDB.showVisits     = false
         WayBookDB.showDistance   = false
         WayBookDB.sortMode       = "label"
+        WayBookDB.autoTag           = true
+        WayBookDB.autoTagRank       = true
+        WayBookDB.autoTagFaction    = true
+        WayBookDB.autoTagProfession = true
         WayBookDB.collapsed      = nil
         WayBookDB.zoneColumnPreGroup = nil
         WayBookDB.tagColumnPreGroup  = nil
@@ -3109,6 +3357,7 @@ local function BuildOptionsUI()
         reverseCheck, loginCheck, colorblindCheck, barCheck,
         labelCheck, tagsCheck, zoneCheck, coordCheck, visitCheck, distCheck,
         sortLabelCheck, sortVisitsCheck, sortRecentCheck, sortNearCheck,
+        autoTagCheck, autoRankCheck, autoFactionCheck, autoProfCheck,
         arriveSlider, fontSlider,
     }
 

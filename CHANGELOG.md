@@ -1,5 +1,18 @@
 # WayBook changelog
 
+## 1.26.26
+
+- A button next to the Edit window's Coordinates field stamps in your current position, for waypoints you saved while standing across the zone from what you were targeting.
+
+## 1.26.24
+
+- A newly added waypoint flashes its row three times, so you can see where in the list it landed.
+
+## 1.26.23
+
+- Auto-tagging is now a setting. "Auto-tag NPCs" in Options turns the whole thing off, and three checkboxes under it pick which tags you want: Rare/Elite, Rep faction, and Profession.
+- The Options window is now three columns wide, so nothing sits far below the fold.
+
 ## 1.26.20
 
 Everything since 1.26.5.
