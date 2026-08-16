@@ -25,12 +25,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      # -g pins the CurseForge upload to MoP Classic. Left to itself the
-      # packager reads every TOC in the repo and would also tag Retail
-      # 12.0.7 and 12.1.0 off WayBook_Mainline.toc, which has never been
-      # loaded on a Retail client. Delete the whole `with:` block once
-      # Retail is actually tested.
+      # No -g since 1.27.0. The packager reads every TOC in the repo and
+      # tags the upload from them: MoP Classic 5.5.4 off WayBook.toc, Retail
+      # 12.0.7 and 12.1.0 off WayBook_Mainline.toc. It was pinned to 5.5.4
+      # while the Retail build had never been loaded on a Retail client;
+      # both flavors were tested on 2026-08-16.
       - name: Package and release
         uses: BigWigsMods/packager@v2
-        with:
-          args: -g 5.5.4

@@ -1,5 +1,38 @@
 # WayBook changelog
 
+## 1.27.0
+
+WayBook runs on Retail now, and the options have moved onto the main window.
+
+### New
+
+- WayBook works on Retail as well as Mists of Pandaria Classic. Both were tested before this release.
+- The separate options window is gone. Its contents are now four tabs below the main window: List, Options, Sort/Auto-Tag and Display.
+- The window can be resized by dragging its bottom-right corner, and it remembers the size along with the position.
+- The Display tab shows a sample waypoint row that changes as you drag the size sliders, so you can judge them without switching away.
+- Tag badges have a size slider of their own.
+- Waypoints you add through WayBook carry their own map art: the WayBook logo on the world map, a gold arrow on the minimap. Waypoints made any other way keep your TomTom theme.
+- WayBook has its own icon in the addon list.
+- "Confirm deletions" can be turned off if you would rather the red minus just delete.
+- An "Open Key Bindings" button on the Options tab takes you straight to WayBook's bindings.
+
+### Improved
+
+- Adding a waypoint switches back to the List tab, so you always see the row you just created.
+- "Keep waypoints on arrival" is on by default.
+- The collapse bar is a click switch now. It used to expand when the mouse passed over it.
+- "Restore window" puts the window back at its original size as well as its original place.
+
+### Fixed
+
+- Throwaway waypoints, the kind another addon creates for a tracked objective and then removes, no longer appear in the list.
+- A quest name in an NPC's tooltip is no longer mistaken for that NPC's reputation faction.
+- Targeting another player and saving a waypoint no longer tags it with their guild or class.
+
+### Removed
+
+- The automatic "Quest" tag. WayBook holds the places you chose to keep, and live quest tracking belongs to the game's own quest log. Tagging a waypoint "Quest" by hand still shows the book icon.
+
 ## 1.26.27
 
 - The download is back to its normal size. Releases from 1.26.20 onward accidentally bundled 2.5MB of screenshots meant for the project page.

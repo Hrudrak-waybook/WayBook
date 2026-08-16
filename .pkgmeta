@@ -12,3 +12,4 @@ ignore:
     - .github
     # The user guide is served from GitHub Pages, not shipped to players.
     - docs
+    - WayBook_TestPlan_v1_2.html

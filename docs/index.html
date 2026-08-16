@@ -203,7 +203,7 @@
     <li><a href="#visits">Visit Tracking</a></li>
     <li><a href="#bar">The Collapse Bar</a></li>
     <li><a href="#share">Sharing and Exporting</a></li>
-    <li><a href="#options">Options Reference</a></li>
+    <li><a href="#options">Settings Reference</a></li>
     <li><a href="#keys">Key Bindings and Slash Commands</a></li>
     <li><a href="#recipes">Recipes</a></li>
     <li><a href="#trouble">Troubleshooting</a></li>
@@ -235,7 +235,7 @@
     <li>Type <code>/waybook</code> or <code>/wb</code></li>
     <li>Click the minimap button</li>
     <li>Press whatever you bind to "Toggle waypoint list" under Key Bindings</li>
-    <li><code>/wb options</code> jumps straight to the Options window</li>
+    <li><code>/wb options</code> jumps straight to the Options tab</li>
   </ul>
   <p>The window is movable, remembers where you put it, and closes with <kbd>Esc</kbd>.</p>
 
@@ -255,7 +255,7 @@
   <p>Across the top. Filters as you type against each waypoint's label, zone and note. Covered in full in section 7.1.</p>
 
   <h3>3.2 Group-by row and the sort arrow</h3>
-  <p>Directly under the search box: <strong>None</strong>, <strong>By Zone</strong> and <strong>By Tag</strong>, plus an arrow button at the right that flips the sort direction. These are the same settings that live in Options, offered here because they are the two you change most. Changing one updates the other immediately.</p>
+  <p>Directly under the search box: <strong>None</strong>, <strong>By Zone</strong> and <strong>By Tag</strong>, plus an arrow button at the right that flips the sort direction. These are the same settings that live on the Sort/Auto-Tag tab, offered here because they are the two you change most. Changing one updates the other immediately.</p>
 
   <h3>3.3 The list</h3>
   <p>One row per waypoint. What each row shows depends on which columns you have turned on, joined together and separated by dashes:</p>
@@ -303,11 +303,16 @@
       <tr><td>Right-click</td><td>Open the Edit window</td></tr>
       <tr><td>Shift-click</td><td>Open the Share window</td></tr>
       <tr><td>Hover</td><td>Tooltip with the name, tags, zone, coordinates, live distance, visit history and note</td></tr>
-      <tr><td>Red minus</td><td>Delete, after a confirmation</td></tr>
+      <tr><td>Red minus</td><td>Delete, after a confirmation. Turn off <strong>Confirm deletions</strong> on the Options tab and the first click deletes.</td></tr>
     </tbody>
   </table>
   </div>
   <p>Clicking a waypoint on another continent will tell you so rather than pretending the arrow was set, because the arrow cannot reach across continents.</p>
+
+  <h3>4.4 How your waypoints look on the map</h3>
+  <p>Waypoints you add through WayBook carry their own map art, so you can tell your saved places apart from whatever else has put a marker on your map. On the world map they show as the WayBook logo. On the minimap they show as a gold arrow, which is also what you see on the minimap edge when the place is off screen, still pointing the way.</p>
+  <p>Both are drawn a little larger than TomTom's default of 16, because at that size they are easy to lose against busy terrain. The one thing that stays at TomTom's size is the marker on the minimap edge, which takes its scale from your chosen theme and cannot be set per waypoint.</p>
+  <p>Waypoints made any other way are left alone. A <code>/way</code> command, a chat link, another addon's marker: all of those keep whatever waypoint theme and size you picked in TomTom's own options.</p>
 </section>
 
 <section id="edit">
@@ -346,7 +351,7 @@
   <p>While this grouping is on, the Tags badge option greys itself out, since every header already names the tag and the badges would only repeat it.</p>
 
   <h3>6.4 Automatic tags</h3>
-  <p>Save a waypoint while you have an NPC targeted and WayBook can tag it for you from what the game already shows in the tooltip. Three kinds, each with its own checkbox under <strong>Auto-Tagging</strong> in Options:</p>
+  <p>Save a waypoint while you have an NPC targeted and WayBook can tag it for you from what the game already shows in the tooltip. Three kinds, each with its own checkbox under <strong>Auto-Tagging</strong> on the Sort/Auto-Tag tab:</p>
   <div class="tablewrap">
   <table>
     <thead><tr><th>Option</th><th>What you get</th></tr></thead>
@@ -360,10 +365,12 @@
   <p>Unticking <strong>Auto-tag NPCs</strong> turns all of it off and greys out the three. Everything defaults to on.</p>
   <div class="note">
     <p><strong>Only at the moment of creation, and only from a target.</strong> Nothing already in your book is ever retagged, nothing is added when you approach or click a waypoint, and tags applied this way can be removed like any others.</p>
+    <p><strong>NPCs only, as the name says.</strong> Save a waypoint while you have another player targeted and no tags are applied. A player tooltip carries a guild and a class where an NPC's carries a title and a faction, and neither of those describes a place worth saving.</p>
+    <p><strong>Quest lines are ignored.</strong> An NPC you are currently questing with lists that quest in its tooltip, in the same place the faction usually sits. The quest name never becomes a tag.</p>
   </div>
 
   <h3>6.5 The Quest tag</h3>
-  <p>Any waypoint tagged "Quest" shows WoW's own quest log book icon at the start of its row. This is a plain rule about that one tag name, so you can apply it by hand to anything you like. If you run Questie, waypoints it creates for tracked objectives pick up the tag automatically.</p>
+  <p>Any waypoint tagged "Quest" shows WoW's own quest log book icon at the start of its row. This is a plain rule about that one tag name, so you can apply it by hand to anything you like. Nothing tags waypoints for you: WayBook holds the places you chose to keep, and live quest tracking stays with the game's own quest log and objective tracker.</p>
 </section>
 
 <section id="finding">
@@ -405,7 +412,7 @@
   </div>
 
   <h3>7.4 Direction</h3>
-  <p>The arrow button on the main window, or "Reverse sort order" in Options, flips the list. When grouped, this reverses both the order of the groups and the order inside each one.</p>
+  <p>The arrow button on the List tab, or "Reverse sort order" on the Sort/Auto-Tag tab, flips the list. When grouped, this reverses both the order of the groups and the order inside each one.</p>
 </section>
 
 <section id="visits">
@@ -414,15 +421,15 @@
   <p>Both figures show in the row tooltip, and either can be used as a sort.</p>
   <p>Separately, the <strong>Clear arrow within</strong> slider drops the crazy arrow once you get that close to whatever it is pointing at. The waypoint itself is never removed by this. Set the slider to 0 to switch the behavior off.</p>
   <div class="note">
-    <p><strong>Waypoints surviving arrival is a setting.</strong> TomTom's own behavior is to delete a waypoint once you reach it. "Keep waypoints on arrival" in Options overrides that for WayBook's own waypoints, which is what makes a permanent address book possible. It is on by default and applies to your existing waypoints, not just new ones.</p>
+    <p><strong>Waypoints surviving arrival is a setting.</strong> TomTom's own behavior is to delete a waypoint once you reach it. "Keep waypoints on arrival" on the Options tab overrides that for WayBook's own waypoints, which is what makes a permanent address book possible. It is on by default and applies to your existing waypoints, not just new ones.</p>
   </div>
-  <p>That setting is deliberately limited to waypoints WayBook created. A quest waypoint set by Questie still belongs to Questie, which removes it when you arrive, so finished objectives clear themselves out and your book does not silt up with old quest markers you never asked to keep.</p>
+  <p>That setting is deliberately limited to waypoints WayBook created. A waypoint another addon set still belongs to that addon, which removes it when you arrive, so its markers clear themselves out and your book does not silt up with entries you never asked to keep.</p>
 </section>
 
 <section id="bar">
   <h2 class="sec">9. The Collapse Bar</h2>
-  <p>Optional, off by default, under <strong>Auto-collapse to text bar</strong> in Options.</p>
-  <p>With it on, the main window shrinks to a small draggable bar reading "WayBook" a moment after your mouse leaves it. Hover the bar and the window comes back, opening toward the center of the screen from whichever corner the bar sits nearest.</p>
+  <p>Optional, off by default, under <strong>Collapse to text bar</strong> on the Options tab.</p>
+  <p>With it on, a small draggable bar reading "WayBook" sits on screen and works as a switch. Click it and the main window opens, toward the center of the screen from whichever corner the bar sits nearest. Click it again and the window goes away.</p>
   <p>The bar keeps its own position, separate from the window's, and stays on screen the whole time rather than appearing and disappearing. Nothing else about how the window behaves changes when this is off.</p>
   <p>Collapsing is not the same as closing. Any Options, Export, Share or Edit window you have open stays open through a collapse. Closing the main window by hand is what shuts them all.</p>
 </section>
@@ -437,12 +444,29 @@
   </div>
 
   <h3>10.2 Export the book</h3>
-  <p><strong>Export Waypoints</strong> in Options opens a selectable text dump of your waypoints as <code>/way</code> lines, with notes as comments. It honors the search box, so type something first to export a subset, or clear it for the whole book. Folded groups are included either way.</p>
+  <p><strong>Export Waypoints</strong> on the Options tab opens a selectable text dump of your waypoints as <code>/way</code> lines, with notes as comments. It honors the search box, so type something first to export a subset, or clear it for the whole book. Folded groups are included either way.</p>
 </section>
 
 <section id="options">
-  <h2 class="sec">11. Options Reference</h2>
-  <p class="lead">Every control, in the order it appears on screen. The Options window recenters itself each time it opens.</p>
+  <h2 class="sec">11. Settings Reference</h2>
+  <p class="lead">Every control, by the tab it lives on. There is no separate options window: the settings are tabs along the bottom of the main window, and clicking one swaps the panel above it.</p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Tab</th><th>What is on it</th></tr></thead>
+    <tbody>
+      <tr><td><strong>List</strong></td><td>The waypoint list itself, the search box, the group-by radios and the sort-direction arrow. Add Waypoint and Clear Arrow sit here too, and hide on the other tabs.</td></tr>
+      <tr><td><strong>Options</strong></td><td>General settings, the arrival slider, and four buttons: Export Waypoints, Open Key Bindings, Restore window, Restore defaults.</td></tr>
+      <tr><td><strong>Sort/Auto-Tag</strong></td><td>Sort by and Group by side by side, with Auto-Tagging beneath.</td></tr>
+      <tr><td><strong>Display</strong></td><td>Which columns show, both size sliders, and a live preview row that changes as you drag them.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <p><strong>The window always reopens on List.</strong> Whichever tab you were on when you closed it, it comes back to the waypoints.</p>
+    <p><strong>It is resizable.</strong> Drag the grip in the bottom-right corner. The list rows and the tab strip both follow, and the size is remembered alongside the position. It will not shrink below its starting size, because the settings pages are laid out to fit exactly that.</p>
+  </div>
 
   <h3>General</h3>
   <div class="tablewrap">
@@ -453,8 +477,9 @@
       <tr><td>Show minimap button</td><td>On</td><td>The button that opens WayBook.</td></tr>
       <tr><td>Reverse sort order</td><td>Off</td><td>Flips the list, groups included.</td></tr>
       <tr><td>Clear arrow on login</td><td>On</td><td>Drops the arrow a second after you log in, instead of letting a restored waypoint grab it.</td></tr>
+      <tr><td>Confirm deletions</td><td>On</td><td>Asks before the red minus removes a waypoint. Turn it off and the first click deletes, which is quicker when you are clearing out several. Either way the note, tags and visit history go with it and nothing comes back.</td></tr>
       <tr><td>Use colorblind-friendly colors</td><td>Off</td><td>Swaps the group header and badge palette for the Okabe-Ito set, chosen to stay distinguishable under the common forms of color blindness.</td></tr>
-      <tr><td>Auto-collapse to text bar</td><td>Off</td><td>Section 9.</td></tr>
+      <tr><td>Collapse to text bar</td><td>Off</td><td>Section 9.</td></tr>
     </tbody>
   </table>
   </div>
@@ -479,9 +504,12 @@
     <tbody>
       <tr><td>Clear arrow within (yards)</td><td>0 to 60. Drops the arrow once you get this close. 0 turns it off.</td></tr>
       <tr><td>List font size</td><td>7 to 20, default 10. Affects the waypoint list only, not buttons or checkboxes.</td></tr>
+      <tr><td>Tag size</td><td>5 to 14, default 8. Point size for the tag badges under each row and the same badges in the Edit window. Separate from the list font, so badges can stay smaller than the labels they sit under. The pill grows with the text rather than clipping it.</td></tr>
+      <tr><td>Preview row</td><td>Not a control. A stand-in waypoint row above the two sliders on the Display tab, so you can see what each one is doing without switching back to the list. Its label follows the list font and its badge follows the tag size.</td></tr>
       <tr><td>Export Waypoints</td><td>Section 10.2.</td></tr>
-      <tr><td>Restore window</td><td>Puts the main window back in the middle of the screen, for when it ends up somewhere unreachable.</td></tr>
-      <tr><td>Restore defaults</td><td>Resets every setting on this panel. Your notes, tags and tag definitions are left alone.</td></tr>
+      <tr><td>Open Key Bindings</td><td>Jumps to the game's key bindings panel. WayBook's four bindings are under the AddOns heading and none are bound out of the box.</td></tr>
+      <tr><td>Restore window</td><td>Puts the main window back in the middle of the screen at its original size, for when it ends up somewhere unreachable or has been resized awkwardly.</td></tr>
+      <tr><td>Restore defaults</td><td>Resets every setting across all four tabs. Your notes, tags and tag definitions are left alone.</td></tr>
     </tbody>
   </table>
   </div>
@@ -496,7 +524,7 @@
     <thead><tr><th>Command</th><th>Result</th></tr></thead>
     <tbody>
       <tr><td><code>/waybook</code> or <code>/wb</code></td><td>Toggle the main window</td></tr>
-      <tr><td><code>/wb options</code> or <code>/wb config</code></td><td>Toggle the Options window</td></tr>
+      <tr><td><code>/wb options</code> or <code>/wb config</code></td><td>Switch to the Options tab, or back to List if already there</td></tr>
     </tbody>
   </table>
   </div>
@@ -527,7 +555,7 @@
   <p>Save every node or spawn point, tag them all with something like "Ghost Iron", then set <strong>Sort by: Nearest</strong> and turn on the Distance column. The list reorders as you move, so the top row is always your next stop.</p>
 
   <h3>A quiet bank-and-vendor list</h3>
-  <p>Tag your bank, mailbox, auction house and repair vendor in each city. Turn on <strong>Auto-collapse to text bar</strong> and park the bar in a corner. WayBook stays out of your way until you hover it, which is all you need for places you visit constantly but never have to look up.</p>
+  <p>Tag your bank, mailbox, auction house and repair vendor in each city. Turn on <strong>Collapse to text bar</strong> and park the bar in a corner. One click brings the list up and another puts it away, which is all you need for places you visit constantly but never have to look up.</p>
 </section>
 
 <section id="trouble">
@@ -549,7 +577,7 @@
   <p>Waypoints are always saved at your own position, because no addon can read another creature's coordinates. Walk to the right spot, right-click the row, and click the button beside the Coordinates field.</p>
 
   <h3>The window is off screen</h3>
-  <p><strong>Restore window</strong> in Options puts it back in the middle.</p>
+  <p><strong>Restore window</strong> on the Options tab puts it back in the middle at its original size.</p>
 
   <h3>Everything is a different color than it was</h3>
   <p>Check whether <strong>Use colorblind-friendly colors</strong> got switched on. It swaps the group header and badge palette.</p>
@@ -557,8 +585,8 @@
 
 <section id="about">
   <h2 class="sec">15. About</h2>
-  <p>WayBook is open source under the MIT license. The version you are running is shown at the bottom of the Options window, along with the license.</p>
-  <p>It is built for Mists of Pandaria Classic. A Retail build exists but has not been tested.</p>
+  <p>WayBook is open source under the MIT license. The version you are running is shown at the bottom of the Display tab, along with the license.</p>
+  <p>It runs on Retail and on Mists of Pandaria Classic, both tested on 2026-08-16 against Retail 12.1.0 and MoP Classic 5.5.4.</p>
   <p>Thanks to the authors of TomTom, which WayBook is built on top of and cannot work without.</p>
   <p>Bug reports and suggestions go on the addon's CurseForge page.</p>
 </section>

@@ -27,11 +27,44 @@ local hbd = LibStub and LibStub("HereBeDragons-2.0", true)
 -- Purely a rename: every value, and every place that reads it, is unchanged.
 local K = {}
 
-K.FRAME_WIDTH  = 360
+K.FRAME_WIDTH  = 400
 -- 446 rather than 420 since 1.26.8: the group-by row added under the search
 -- box takes 26px, and the frame grew by exactly that so the list area below
 -- it is unchanged.
-K.FRAME_HEIGHT = 446
+K.FRAME_HEIGHT = 352
+-- Resize limits. The floor is the starting size rather than something smaller:
+-- every option page is laid out at fixed coordinates against these dimensions,
+-- and the four tab labels need the full width to avoid clipping "Sort/Auto-Tag".
+-- Growing is free; shrinking would start cutting things off.
+K.MIN_FRAME_WIDTH  = 400
+K.MIN_FRAME_HEIGHT = 352
+K.MAX_FRAME_WIDTH  = 900
+K.MAX_FRAME_HEIGHT = 1000
+-- Tab strip along the bottom edge, with the action buttons sitting above it
+-- and the page content above those.
+-- Tabs come from PanelTabButtonTemplate, which carries its own art and knows
+-- the geometry of both the selected and unselected states. Only the strip's
+-- offset below the frame is set here; the template sizes each tab to its own
+-- label, which is why the character sheet's tabs are not all the same width.
+K.TAB_Y        = 2     -- tabs hang below the frame, overlapping its edge
+-- The template's own height is 32, which leaves the label swimming in a tall
+-- tab. Width is not set here at all: each tab is pinned by both edges to the
+-- frame, so the strip is always exactly as wide as the window.
+-- Sized so the label clears the tab's bottom edge by the same margin it clears
+-- the top. Unselected tabs used to be 5px shorter than this and their labels
+-- sat almost on the lower edge.
+K.TAB_HEIGHT      = 27
+-- The selected tab reaches further down than its neighbours, the way the
+-- character sheet's does. Since every tab's top edge is pinned, growing the
+-- height extends it downward on its own. The label moves down by the same
+-- amount, so the padding below it stays constant across the strip and only
+-- the gap above it opens up.
+K.TAB_SELECT_GROW = 4
+K.TAB_LABEL_Y     = -5   -- label offset from the tab's top when unselected
+K.BUTTON_ROW_Y = 16    -- Add Waypoint / Clear Arrow, along the bottom
+K.PAGE_INSET   = 18    -- option pages, left and right
+K.PAGE_TOP     = -44   -- under the title bar
+K.PAGE_BOTTOM  = 46    -- above the button row
 K.GROUP_ROW_Y = -68   -- group-by radios and the sort toggle, under the search box
 K.ROW_PADDING = 5   -- row height on top of the glyph height
 K.CHECK_INTERVAL = 0.5
@@ -44,19 +77,46 @@ K.BUTTON_FONT_DELTA = -2   -- trims the stock button label a touch
 K.MIN_LIST_FONT_SIZE = 7
 K.MAX_LIST_FONT_SIZE = 20
 K.DEFAULT_LIST_FONT_SIZE = 10   -- what GameFontNormalSmall gives you
+-- Tag badges size independently of the list. They were fixed at 7pt because
+-- small pills are wanted under a row rather than a second line of full-size
+-- text, but 7pt is unreadable on a large monitor, so it became a slider.
+-- The default moved to 8 once the slider made it easy to compare them.
+K.MIN_TAG_FONT_SIZE = 5
+K.MAX_TAG_FONT_SIZE = 14
+K.DEFAULT_TAG_FONT_SIZE = 8
+-- Vertical padding baked into a badge on top of its text size, so the pill
+-- grows with the font instead of clipping it.
+K.BADGE_VPAD = 5
 
 K.DEFAULT_CLEAR_DISTANCE  = 10
 K.DEFAULT_ARRIVE_DISTANCE = 10
 
+-- Map art for waypoints WayBook creates, so they read as yours at a glance
+-- among whatever else is on the map. TomTom takes these per waypoint off the
+-- stored uid (TomTom_Waypoints.lua:264 and :278) and falls back to the user's
+-- chosen theme for anything that doesn't set them, so other addons' waypoints
+-- and your own theme choice are both left alone.
+--
+-- The minimap one is an arrow rather than the pin on purpose: minimap_icon
+-- feeds both the in-range dot and the off-screen edge indicator, and the edge
+-- indicator gets rotated by SetTexCoord (TomTom_Waypoints.lua:270 and :523).
+-- One field drives both, so the shape has to survive being spun and still
+-- point at something. The world map icon is never rotated and gets the pin.
+-- TomTom's own default is 16, which is too small to pick out on a busy map, so
+-- these are set rather than inherited. One caveat: minimap_icon_size only
+-- governs the in-range dot (TomTom_Waypoints.lua:266). The off-screen edge
+-- indicator takes its size from the theme instead (:271), and there is no
+-- per-waypoint override for it.
+K.MINIMAP_ICON  = "Interface\\AddOns\\WayBook\\WayBook-MinimapArrow.tga"
+K.WORLDMAP_ICON = "Interface\\AddOns\\WayBook\\WayBook-MapIcon.tga"
+K.MINIMAP_ICON_SIZE  = 24
+-- Smaller than the minimap's. The world map draws at a much larger scale, so
+-- the same 24 crowded the city maps where quest, vendor and flight icons are
+-- already packed together.
+K.WORLDMAP_ICON_SIZE = 18
+
 K.BAR_PADDING = 10   -- text inset inside the collapsed bar
 K.BAR_GAP = 4        -- gap between the bar and the expanded window
--- Grace period before an actual collapse, so the mouse has time to cross the
--- gap between the bar and the window (or between the window and a child
--- window like Options) without everything snapping shut mid-move.
-K.COLLAPSE_DELAY = 0.4
--- How often the collapse watcher polls IsMouseOver() on every relevant
--- window. Fast enough to feel immediate, cheap enough to run continuously.
-K.WATCH_INTERVAL = 0.15
 
 K.COLOR_LABEL    = "|cff40ff40"
 K.COLOR_COORDS   = "|cffffffff"
@@ -117,7 +177,6 @@ local pendingScrollUid
 -- inside the refresh that finds the row, while the flash outlives that refresh
 -- and has to keep finding its row for the next second and a half.
 local pendingFlashUid
-local optionsFrame
 local exportFrame
 local shareFrame
 local editFrame
@@ -131,7 +190,6 @@ local refreshPending = false
 
 -- Forward declarations for things defined later that earlier code reaches into.
 local Toggle, ToggleOptions, RestyleAll, RefreshOptions, PromptDelete, PromptShare, PromptEdit
-local StartCollapseWatcher, StopCollapseWatcher
 
 -- The waypoint the crazy arrow is currently pointing at, tracked via a hook on
 -- TomTom:SetCrazyArrow. Declared up here because renaming needs to read it.
@@ -152,6 +210,7 @@ local function Setting(key, default)
 end
 
 local function ListFontSize()   return Setting("listFontSize", K.DEFAULT_LIST_FONT_SIZE) end
+local function TagFontSize()    return Setting("tagFontSize", K.DEFAULT_TAG_FONT_SIZE) end
 local function ArriveDistance() return Setting("arriveDistance", K.DEFAULT_ARRIVE_DISTANCE) end
 -- "zone", "tag" or "none". Replaced the old groupByZone boolean in 1.21.0 so
 -- a second grouping axis had somewhere to go; see the PLAYER_LOGIN migration
@@ -164,6 +223,10 @@ local function SortDescending() return Setting("sortDescending", false) end
 local function SortMode()       return Setting("sortMode", "label") end
 local function ShowVisits()     return Setting("showVisits", false) end
 local function ClearArrowOnLogin() return Setting("clearArrowOnLogin", true) end
+-- Defaults on: deleting takes a note, its tags and its visit history with it,
+-- and none of that comes back. Off is for clearing out several at once, where
+-- confirming each one is the slow part.
+local function ConfirmDeletions()  return Setting("confirmDeletions", true) end
 local function ShowLabel()      return Setting("showLabel", true) end
 -- Label is the only column on out of the box. The rest are opt-in, so a fresh
 -- character opens to a plain list of names.
@@ -374,30 +437,6 @@ local function ToggleTag(uid, tagName, on)
     SetTags(uid, tags)
     PruneUnusedTagDefinitions()
 end
-
--- Auto-tags any waypoint Questie creates as "Quest" (case-insensitive match
--- with IsQuestTagged above), so its book icon shows without tagging it by
--- hand every time Questie's tracked objective changes. Added in 1.25.1,
--- reversing the "no auto-tagging" stance the book icon originally
--- shipped with - deliberately narrow: this only reacts to Questie's own
--- from = "Questie" marker on a waypoint TomTom just created, nothing else
--- about Questie's own data.
---
--- hooksecurefunc gives this the exact arguments AddWaypoint was called with,
--- not its return value or the table it actually stored - AddWaypoint builds
--- a brand new uid table internally (TomTom.lua:995) rather than reusing opts,
--- so opts itself can't be used as uid here. Re-deriving the same key
--- AddWaypoint used (GetKeyArgs on the same m, x, y, title) and looking it up
--- in TomTom.waypoints is the only reliable way back to the real uid.
-local function AutoTagQuestieWaypoint(_, m, x, y, opts)
-    if not (opts and opts.from == "Questie" and opts.title) then return end
-    local key = TomTom:GetKeyArgs(m, x, y, opts.title)
-    local uid = TomTom.waypoints[m] and TomTom.waypoints[m][key]
-    if not uid then return end
-    DefineTag("Quest")
-    ToggleTag(uid, "Quest", true)
-end
-
 
 --------------------------------------------------------------------------
 -- Visit tracking
@@ -634,36 +673,54 @@ local function Collect()
     for mapID, group in pairs(store) do
         local zone = ZoneName(mapID)
         for _, uid in pairs(group) do
-            local title = uid.title or "Unknown waypoint"
-            entryTotal = entryTotal + 1
-            local note = GetNote(uid)
-            local tags = GetTags(uid)
-            local tagText = #tags > 0 and table.concat(tags, " ") or nil
-            -- Group counts come off the filtered set so a header never
-            -- promises rows the search has taken away.
-            if Matches(title, zone, note, tagText) then
-                local count, last = GetVisits(uid)
-                -- Read once per rebuild. The sort would otherwise ask TomTom
-                -- again on every comparison, and a distance that shifts partway
-                -- through a sort makes the comparator inconsistent.
-                local dist = DistanceTo(uid)
-                entries[#entries + 1] = {
-                    uid       = uid,
-                    mapID     = mapID,
-                    zone      = zone,
-                    tags      = tags,
-                    groupKey  = zone,
-                    x         = (uid[2] or 0) * 100,
-                    y         = (uid[3] or 0) * 100,
-                    title     = title,
-                    visits    = count,
-                    lastVisit = last,
-                    distance  = dist,
-                }
-                zoneCounts[zone] = (zoneCounts[zone] or 0) + 1
-                local nearest = zoneNearest[zone]
-                if dist and (not nearest or dist < nearest) then
-                    zoneNearest[zone] = dist
+            -- TomTom.waypoints holds other addons' live tracking alongside
+            -- saved places. Anything created with persistent = false is
+            -- somebody else's working state, torn down and rebuilt as it
+            -- updates - TomTom's own quest objective integration keeps exactly
+            -- one at a time and deletes the previous one whenever the closest
+            -- objective changes. A book of places you chose to keep should not
+            -- show rows that delete themselves, so they are skipped entirely
+            -- rather than filtered later: they never reach entryTotal, the
+            -- zone counts or the search.
+            --
+            -- AddWaypoint copies opts onto the stored uid (TomTom.lua:998), and
+            -- only persistent waypoints are written to waypointprofile
+            -- (TomTom.lua:1013), so this is TomTom's own distinction. Testing
+            -- against false rather than truthiness on purpose: a waypoint that
+            -- somehow carries no flag at all still shows, because hiding a
+            -- user's saved place is the worse failure.
+            if uid.persistent ~= false then
+                local title = uid.title or "Unknown waypoint"
+                entryTotal = entryTotal + 1
+                local note = GetNote(uid)
+                local tags = GetTags(uid)
+                local tagText = #tags > 0 and table.concat(tags, " ") or nil
+                -- Group counts come off the filtered set so a header never
+                -- promises rows the search has taken away.
+                if Matches(title, zone, note, tagText) then
+                    local count, last = GetVisits(uid)
+                    -- Read once per rebuild. The sort would otherwise ask TomTom
+                    -- again on every comparison, and a distance that shifts partway
+                    -- through a sort makes the comparator inconsistent.
+                    local dist = DistanceTo(uid)
+                    entries[#entries + 1] = {
+                        uid       = uid,
+                        mapID     = mapID,
+                        zone      = zone,
+                        tags      = tags,
+                        groupKey  = zone,
+                        x         = (uid[2] or 0) * 100,
+                        y         = (uid[3] or 0) * 100,
+                        title     = title,
+                        visits    = count,
+                        lastVisit = last,
+                        distance  = dist,
+                    }
+                    zoneCounts[zone] = (zoneCounts[zone] or 0) + 1
+                    local nearest = zoneNearest[zone]
+                    if dist and (not nearest or dist < nearest) then
+                        zoneNearest[zone] = dist
+                    end
                 end
             end
         end
@@ -911,13 +968,11 @@ end
 --
 -- This used to be implemented by mutating TomTom.profile.persistence.cleardistance
 -- itself (the shared global every addon's waypoints fall back to when they
--- don't set their own). That broke other addons' own arrival-clearing: Questie
--- tags its own tracked-objective waypoint with from = "Questie" and never sets
--- its own cleardistance, so it silently inherited whatever WayBook set the
--- global to - meaning "Keep waypoints on arrival" also stopped Questie's quest
--- waypoint from clearing when you reached it. Confirmed by reading
--- TrackerUtils.lua/QuestieFrame.lua's TomTom:AddWaypoint calls. Fix: only ever
--- freeze cleardistance on waypoints WayBook itself created (source == "WayBook",
+-- don't set their own). That broke other addons' own arrival-clearing: any
+-- addon that adds a waypoint without setting its own cleardistance silently
+-- inherited whatever WayBook set the global to, so "Keep waypoints on arrival"
+-- stopped their waypoints from clearing when you reached them as well. Fix:
+-- only ever freeze cleardistance on waypoints WayBook created (source == "WayBook",
 -- set at creation in AddTargetWaypoint/RenameWaypoint) and leave the shared
 -- global at its normal default, so any other addon's waypoints keep behaving
 -- exactly as if WayBook didn't exist.
@@ -943,8 +998,11 @@ local function SetKeepOnArrival(keep)
     TomTom:ReloadWaypoints()
 end
 
+-- Defaults on when the key is missing entirely, which covers the window
+-- before PLAYER_LOGIN has run and the case where TomTom never loaded and the
+-- login handler returned early without setting it.
 local function KeepOnArrivalEnabled()
-    return WayBookDB and WayBookDB.keepOnArrival or false
+    return Setting("keepOnArrival", true)
 end
 
 local function ActivateWaypoint(entry)
@@ -1010,8 +1068,13 @@ local function RenameWaypoint(entry, newTitle)
     local newUid = TomTom:AddWaypoint(m, x, y, {
         title        = newTitle,
         source       = "WayBook",
+        from         = "WayBook",
         persistent   = true,
         crazy        = false,
+        minimap_icon  = K.MINIMAP_ICON,
+        worldmap_icon = K.WORLDMAP_ICON,
+        minimap_icon_size  = K.MINIMAP_ICON_SIZE,
+        worldmap_icon_size = K.WORLDMAP_ICON_SIZE,
         cleardistance = KeepOnArrivalEnabled() and 0
             or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
     })
@@ -1070,8 +1133,13 @@ local function MoveWaypoint(entry, newX, newY)
     local newUid = TomTom:AddWaypoint(m, newX / 100, newY / 100, {
         title        = title,
         source       = "WayBook",
+        from         = "WayBook",
         persistent   = true,
         crazy        = false,
+        minimap_icon  = K.MINIMAP_ICON,
+        worldmap_icon = K.WORLDMAP_ICON,
+        minimap_icon_size  = K.MINIMAP_ICON_SIZE,
+        worldmap_icon_size = K.WORLDMAP_ICON_SIZE,
         cleardistance = KeepOnArrivalEnabled() and 0
             or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
     })
@@ -1113,6 +1181,10 @@ StaticPopupDialogs["WAYBOOK_DELETE"] = {
 }
 
 function PromptDelete(entry)
+    if not ConfirmDeletions() then
+        DeleteWaypoint(entry)
+        return
+    end
     deleteTarget = entry
     StaticPopup_Show("WAYBOOK_DELETE", entry.title)
 end
@@ -1283,6 +1355,31 @@ function AutoTag.IsStatusLine(text)
     return text:find("%%") ~= nil
 end
 
+-- A unit tooltip also lists the quests that unit advances, and those lines sit
+-- straight after the level - the same slot the faction reads from. Targeting a
+-- quest objective therefore tagged the quest name: "Quartermaster Richter"
+-- came back tagged "Repair Yourself" on Retail, from a tooltip reading
+-- name / Supplies and Repairs / Level 7 / Repair Yourself / 1/1 Speak With...
+--
+-- Checked against the player's own quest log rather than by shape, because a
+-- quest name looks like any other line. Rejecting the candidate rather than
+-- shifting position deliberately: the KnownFactionNames sweep below already
+-- handles finding a real faction further down, so an NPC with both a quest and
+-- a faction still tags the faction.
+function AutoTag.IsQuestTitle(text)
+    if not (text and C_QuestLog and C_QuestLog.GetNumQuestLogEntries
+        and C_QuestLog.GetInfo) then
+        return false
+    end
+    for i = 1, (C_QuestLog.GetNumQuestLogEntries() or 0) do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and info.title == text then
+            return true
+        end
+    end
+    return false
+end
+
 -- Reads the target's tooltip once and returns both the faction line and the
 -- subtitle, since finding either needs the whole populated tooltip anyway.
 function AutoTag.ScanTargetTooltip()
@@ -1320,6 +1417,7 @@ function AutoTag.ScanTargetTooltip()
     local faction = levelAt and lines[levelAt + 1] or nil
     if subtitle and AutoTag.IsStatusLine(subtitle) then subtitle = nil end
     if faction and AutoTag.IsStatusLine(faction) then faction = nil end
+    if faction and AutoTag.IsQuestTitle(faction) then faction = nil end
 
     -- Fall back to a reputation-list match anywhere in the tooltip if the
     -- structural read came up empty - a tooltip with no level line at all
@@ -1340,6 +1438,14 @@ end
 function AutoTag.TargetAutoTags()
     local tags = {}
     if not AutoTagEnabled() then return tags end
+
+    -- The option is called Auto-tag NPCs, and a player tooltip only looks
+    -- like an NPC's by accident. Vandal / Teshuva / Level 7 Human (Player) /
+    -- Rogue / Alliance puts the guild where the subtitle goes and the class
+    -- where the faction goes, so a player target came back tagged with its
+    -- guild name and its class. Nothing in a player tooltip describes a place
+    -- worth saving, so the whole scan is skipped rather than picked apart.
+    if UnitIsPlayer("target") then return tags end
 
     if AutoTagRank() then
         for _, tagName in ipairs(AutoTag.CLASSIFICATION[UnitClassification("target") or ""] or {}) do
@@ -1397,13 +1503,25 @@ local function AddTargetWaypoint()
         local uid = TomTom:AddWaypoint(m, x, y, {
             title        = "New waypoint",
             source       = "WayBook",
+            from         = "WayBook",
             persistent   = true,
             crazy        = false,
+            minimap_icon  = K.MINIMAP_ICON,
+            worldmap_icon = K.WORLDMAP_ICON,
+            minimap_icon_size  = K.MINIMAP_ICON_SIZE,
+            worldmap_icon_size = K.WORLDMAP_ICON_SIZE,
             cleardistance = KeepOnArrivalEnabled() and 0
                 or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
         })
         if uid then
             pendingFlashUid = uid
+            -- Forward reference to the global defined with the tab strip, far
+            -- below. Adding a waypoint is almost always a keybind press, which
+            -- can land while any tab is up, and the new row is the whole point
+            -- of pressing it - so the window goes back to the list rather than
+            -- flashing a row nobody can see. Its own refresh consumes the
+            -- pending flash, so this has to come after that is armed.
+            SelectTab("list")
             PromptEdit({ uid = uid, title = "New waypoint" })
         end
         return uid
@@ -1422,8 +1540,13 @@ local function AddTargetWaypoint()
     local uid = TomTom:AddWaypoint(m, x, y, {
         title        = name,
         source       = "WayBook",
+        from         = "WayBook",
         persistent   = true,
         crazy        = false,   -- you are already standing on it
+        minimap_icon  = K.MINIMAP_ICON,
+        worldmap_icon = K.WORLDMAP_ICON,
+        minimap_icon_size  = K.MINIMAP_ICON_SIZE,
+        worldmap_icon_size = K.WORLDMAP_ICON_SIZE,
         cleardistance = KeepOnArrivalEnabled() and 0
             or (WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE),
     })
@@ -1443,6 +1566,9 @@ local function AddTargetWaypoint()
         -- ScrollToWaypoint opens.
         ScrollToWaypoint(uid)
         pendingFlashUid = uid
+        -- See the note in the no-target branch: last, so the refresh it runs
+        -- is the one that scrolls to the new row and starts its flash.
+        SelectTab("list")
         if #applied > 0 then
             Print(("Saved %s. Tagged %s."):format(name, table.concat(applied, ", ")))
         else
@@ -1475,19 +1601,17 @@ local function AutoCollapseEnabled()
 end
 
 -- The bar's own visibility tracks this setting directly, independent of
--- whatever collapse/expand cycle the main window is currently in - see the
--- Collapse bar section below.
+-- whether the main window happens to be open - see the Collapse bar section
+-- below.
 local function SetAutoCollapse(show)
     WayBookDB.autoCollapse = show and true or false
     if barFrame then
         if WayBookDB.autoCollapse then barFrame:Show() else barFrame:Hide() end
     end
-    -- Flipping the checkbox while the main window happens to already be open
-    -- has to take effect immediately, not just on the window's next OnShow.
-    if WayBookDB.autoCollapse then
-        if frame and frame:IsShown() then StartCollapseWatcher() end
-    else
-        StopCollapseWatcher()
+    -- Turning the bar off with the list already folded away would otherwise
+    -- leave nothing on screen and no way back except a slash command.
+    if not WayBookDB.autoCollapse and frame and not frame:IsShown() then
+        frame:Show()
     end
 end
 
@@ -1569,12 +1693,11 @@ end
 -- Rows
 --------------------------------------------------------------------------
 
--- Fixed at 7pt regardless of the list font-size slider: small badges are
--- wanted here specifically, not badges that scale with everything else.
--- Captured once from GameFontNormalSmall's own file/flags so the
--- badge text still matches the rest of the list's typeface.
-K.BADGE_FONT_SIZE = 7
-K.BADGE_HEIGHT     = 12   -- background + text, one badge line
+-- Sized by its own slider rather than the list one: badges are meant to stay
+-- smaller than the row text they sit under, so they get a separate control.
+-- The typeface is captured once from GameFontNormalSmall's own file/flags so
+-- badge text still matches the rest of the list.
+local BadgeHeight   -- forward declaration; defined with BadgeFont below
 K.BADGE_PADDING    = 4    -- horizontal padding inside a badge's background
 K.BADGE_GAP        = 4    -- gap between adjacent badges
 K.BADGE_ROW_GAP    = 2    -- gap between the label line and the badge line
@@ -1587,7 +1710,8 @@ local badgeFontFile, badgeFontFlags
 -- with a temporary preview frame. Blizzard doesn't expose this as a named
 -- atlas, only as a bare file ID, so there is no string path to reference
 -- instead. Shown next to any row whose waypoint carries the "Quest" tag -
--- see IsQuestTagged - not tied to Questie or any other detection.
+-- see IsQuestTagged. Nothing applies that tag for you; it is a plain rule
+-- about one tag name that you set by hand.
 K.QUEST_TAG_ICON = 136797
 K.QUEST_ICON_GAP = 3   -- matches the gap row.del already keeps before row.text
 
@@ -1607,7 +1731,13 @@ local function BadgeFont()
         badgeFontFile, _, badgeFontFlags = probe:GetFont()
         probe:Hide()
     end
-    return badgeFontFile, K.BADGE_FONT_SIZE, badgeFontFlags
+    return badgeFontFile, TagFontSize(), badgeFontFlags
+end
+
+-- Pill height tracks the text, so the badge never clips its own label at the
+-- top of the slider's range.
+function BadgeHeight()
+    return TagFontSize() + K.BADGE_VPAD
 end
 
 -- One badge = a small rounded pill sized to fit its own text, plus the text
@@ -1666,9 +1796,10 @@ local function LayoutBadges(row, tags)
     end
     for i, tagName in ipairs(tags) do
         local badge = AcquireBadge(row, i)
+        badge.text:SetFont(BadgeFont())
         badge.text:SetText(tagName)
         local w = badge.text:GetStringWidth() + K.BADGE_PADDING * 2
-        badge:SetSize(w, K.BADGE_HEIGHT)
+        badge:SetSize(w, BadgeHeight())
         badge:ClearAllPoints()
         badge:SetPoint("TOPLEFT", row.label, "BOTTOMLEFT", x, -K.BADGE_ROW_GAP)
         badge:Show()
@@ -1678,7 +1809,7 @@ local function LayoutBadges(row, tags)
         row.badges[i]:Hide()
     end
 
-    return K.BADGE_ROW_GAP + K.BADGE_HEIGHT
+    return K.BADGE_ROW_GAP + BadgeHeight()
 end
 
 local function AcquireEntryRow(index)
@@ -1807,7 +1938,14 @@ local function AcquireEntryRow(index)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Delete waypoint")
         GameTooltip:AddLine(parent.entry.title, 1, 1, 1)
-        GameTooltip:AddLine("You will be asked to confirm.", 0.6, 0.6, 0.6)
+        -- Read live rather than cached, so toggling the option in Options
+        -- shows up on the very next hover without a reload.
+        if ConfirmDeletions() then
+            GameTooltip:AddLine("You will be asked to confirm.", 0.6, 0.6, 0.6)
+        else
+            GameTooltip:AddLine("Deletes immediately. Confirmations are off.",
+                1, 0.5, 0.5)
+        end
         GameTooltip:Show()
     end)
     row.del:SetScript("OnLeave", function(self)
@@ -2576,7 +2714,6 @@ local function BuildEditUI()
     -- the bottom. Anything that needs the chip area's y reads this.
     local CHIP_AREA_Y = -230
     local CHIP_AREA_WIDTH = 330
-    local CHIP_ROW_STEP = K.BADGE_HEIGHT + 6
     local GAP_AFTER_CHIPS = 20
     local GAP_HEADING_TO_BOX = 16
     local GAP_BEFORE_CLOSE = 16
@@ -2628,16 +2765,18 @@ local function BuildEditUI()
         if not entry then return end
         local tags = GetTags(entry.uid)
 
+        local CHIP_ROW_STEP = BadgeHeight() + 6
         local x, y = 0, 0
         for i, tagName in ipairs(tags) do
             local chip = AcquireEditTagChip(editFrame.chips, chipContent, i)
+            chip.text:SetFont(BadgeFont())
             chip.text:SetText(tagName)
             local w = chip.text:GetStringWidth() + K.BADGE_PADDING * 2
             if x > 0 and x + w > CHIP_AREA_WIDTH then
                 x = 0
                 y = y + CHIP_ROW_STEP
             end
-            chip:SetSize(w, K.BADGE_HEIGHT)
+            chip:SetSize(w, BadgeHeight())
             chip:ClearAllPoints()
             chip:SetPoint("TOPLEFT", chipContent, "TOPLEFT", x, -y)
             chip:Show()
@@ -2652,7 +2791,7 @@ local function BuildEditUI()
             editFrame.chips[i]:Hide()
         end
 
-        local chipsHeight = (#tags > 0) and (y + K.BADGE_HEIGHT) or 0
+        local chipsHeight = (#tags > 0) and (y + BadgeHeight()) or 0
         local newLabelY = CHIP_AREA_Y - chipsHeight - GAP_AFTER_CHIPS
         local newBoxY = newLabelY - GAP_HEADING_TO_BOX
 
@@ -2884,57 +3023,36 @@ local function BuildEditUI()
     end)
 end
 
-local function BuildOptionsUI()
-    local template = BackdropTemplateMixin and "BackdropTemplate" or nil
+-- Option pages live on the main window as tab content rather than in a window
+-- of their own. Each page is a plain container covering the frame's content
+-- area, and SelectTab shows one while hiding the rest.
+--
+-- Controls are built onto their page exactly the way they used to be built
+-- onto the Options window, so every Sync wrapper and RefreshOptions itself are
+-- unchanged: syncing a control that happens to sit on a hidden page is
+-- harmless, and the cross-page greying (Zone against Group by Zone, the
+-- Auto-Tagging sub-options against their master) keeps working across tabs
+-- for exactly that reason.
+local function BuildOptionPages()
+    local function Page()
+        local pg = CreateFrame("Frame", nil, frame)
+        pg:SetPoint("TOPLEFT", frame, "TOPLEFT", K.PAGE_INSET, K.PAGE_TOP)
+        pg:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -K.PAGE_INSET, K.PAGE_BOTTOM)
+        pg:Hide()
+        return pg
+    end
 
-    optionsFrame = CreateFrame("Frame", "WayBookOptionsFrame", UIParent, template)
-    -- Three columns since 1.26.22, laid out as two rows of sections:
-    -- General / Group by: / Sort by: across the top, then Show in the list: /
-    -- Auto-Tag: below. Column 1 is the widest because "Use colorblind-friendly
-    -- colors" sets its floor; 2 and 3 only ever hold short labels.
-    --
-    -- Headings sit on COLn, checkboxes two pixels left of it (the template's
-    -- box has its own padding), and a sub-checkbox indents ten right.
-    -- Height puts the Export button 54 below the font slider's top edge, the
-    -- same gap the two-column panel shipped with.
-    optionsFrame:SetSize(490, 618)
-    optionsFrame:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 },
-    })
-    AddOpaqueBackground(optionsFrame)
-    optionsFrame:SetMovable(true)
-    optionsFrame:EnableMouse(true)
-    optionsFrame:RegisterForDrag("LeftButton")
-    optionsFrame:SetScript("OnDragStart", optionsFrame.StartMoving)
-    -- Draggable within a session, but the position is deliberately not saved:
-    -- the panel recenters every time it opens.
-    optionsFrame:SetScript("OnDragStop", optionsFrame.StopMovingOrSizing)
-    optionsFrame:SetClampedToScreen(true)
-    optionsFrame:SetFrameStrata("DIALOG")
-    optionsFrame:Hide()
+    local general, sortPage, showPage = Page(), Page(), Page()
 
-    tinsert(UISpecialFrames, "WayBookOptionsFrame")
+    -- One column per page, except Sort, which pairs Sort by and Group by side
+    -- by side: both are short lists and they read as one decision together.
+    local COL, SUB = 6, 16
+    local RCOL, RSUB = 186, 196
 
-    local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
-    title:SetText("WayBook Options")
+    MakeSectionHeading(general, COL, -2, "General")
 
-    local close = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -6, -6)
-
-    -- Row one runs the full width in three columns. Row two holds only two
-    -- sections, so it gets its own pair of x positions, spaced to sit centered
-    -- under row one rather than left-aligned against it.
-    local COL1, COL2, COL3 = 22, 232, 352
-    local R2COL1, R2COL2 = 105, 285
-
-    MakeSectionHeading(optionsFrame, COL1, -42, "General")
-
-    local keepCheck = MakeCheck(optionsFrame, "WayBookOptKeep",
-        "Keep waypoints on arrival", 20, -62,
+    local keepCheck = MakeCheck(general, "WayBookOptKeep",
+        "Keep waypoints on arrival", COL, -24,
         KeepOnArrivalEnabled, SetKeepOnArrival)
     keepCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2946,12 +3064,12 @@ local function BuildOptionsUI()
     end)
     keepCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local iconCheck = MakeCheck(optionsFrame, "WayBookOptIcon",
-        "Show minimap button", 20, -86,
+    local iconCheck = MakeCheck(general, "WayBookOptIcon",
+        "Show minimap button", COL, -48,
         MinimapShown, SetMinimapShown)
 
-    local reverseCheck = MakeCheck(optionsFrame, "WayBookOptReverse",
-        "Reverse sort order", 20, -110,
+    local reverseCheck = MakeCheck(sortPage, "WayBookOptReverse",
+        "Reverse sort order", SUB, -112,
         SortDescending,
         function(v) WayBookDB.sortDescending = v end)
     reverseCheck:SetScript("OnEnter", function(self)
@@ -2964,8 +3082,8 @@ local function BuildOptionsUI()
     end)
     reverseCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local loginCheck = MakeCheck(optionsFrame, "WayBookOptLogin",
-        "Clear arrow on login", 20, -134,
+    local loginCheck = MakeCheck(general, "WayBookOptLogin",
+        "Clear arrow on login", COL, -72,
         ClearArrowOnLogin,
         function(v) WayBookDB.clearArrowOnLogin = v end)
     loginCheck:SetScript("OnEnter", function(self)
@@ -2983,8 +3101,8 @@ local function BuildOptionsUI()
     -- Swaps the zone/tag header and badge palette for Okabe & Ito's
     -- colorblind-safe six, rather than replacing the default outright,
     -- so anyone who prefers the original palette still can.
-    local colorblindCheck = MakeCheck(optionsFrame, "WayBookOptColorblind",
-        "Use colorblind-friendly colors", 20, -158,
+    local colorblindCheck = MakeCheck(general, "WayBookOptColorblind",
+        "Use colorblind-friendly colors", COL, -96,
         ColorblindMode,
         function(v)
             WayBookDB.colorblindMode = v
@@ -3001,39 +3119,54 @@ local function BuildOptionsUI()
     end)
     colorblindCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local barCheck = MakeCheck(optionsFrame, "WayBookOptBar",
-        "Auto-collapse to text bar", 20, -182,
+    local barCheck = MakeCheck(general, "WayBookOptBar",
+        "Collapse to text bar", COL, -120,
         AutoCollapseEnabled, SetAutoCollapse)
     barCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("Auto-collapse to text bar")
+        GameTooltip:AddLine("Collapse to text bar")
         GameTooltip:AddLine(
-            "Shrinks the main window down to a small draggable \"WayBook\" bar a " ..
-            "moment after the mouse leaves it (and any Options, Export, Share or " ..
-            "Edit window open at the time). Hover the bar to bring the window back.",
+            "Puts a small draggable \"WayBook\" bar on screen that switches the " ..
+            "list on and off. Click it to open the window, click it again to put " ..
+            "the window away. Options, Export, Share and Edit stay where they are.",
             1, 1, 1, true)
         GameTooltip:Show()
     end)
     barCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+    local confirmCheck = MakeCheck(general, "WayBookOptConfirmDelete",
+        "Confirm deletions", COL, -144,
+        ConfirmDeletions,
+        function(v) WayBookDB.confirmDeletions = v end)
+    confirmCheck:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Confirm deletions")
+        GameTooltip:AddLine(
+            "Asks before the red minus removes a waypoint. Turn it off and the " ..
+            "first click deletes. Either way the note, tags and visit history " ..
+            "go too, and nothing comes back.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    confirmCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     -- Column 3, top row.
-    MakeSectionHeading(optionsFrame, COL3, -42, "Group by:")
+    MakeSectionHeading(sortPage, RCOL, -2, "Group by:")
 
     -- Radios, same pattern as "Sort by:" below: the setter always writes its
     -- own mode regardless of the checkbox's own checked/unchecked state, and
     -- RefreshOptions() re-syncs every checkbox afterward so only the true
     -- match ends up ticked.
     local function GroupRadio(name, label, mode, y)
-        return MakeCheck(optionsFrame, name, label, COL3 - 2, y,
+        return MakeCheck(sortPage, name, label, RSUB, y,
             function() return GroupMode() == mode end,
             function() SetGroupMode(mode) end)
     end
 
-    local groupNoneCheck = GroupRadio("WayBookOptGroupNone", "None", "none", -62)
+    local groupNoneCheck = GroupRadio("WayBookOptGroupNone", "None", "none", -24)
 
-    local groupZoneCheck = GroupRadio("WayBookOptGroupZone", "By Zone", "zone", -86)
+    local groupZoneCheck = GroupRadio("WayBookOptGroupZone", "By Zone", "zone", -46)
 
-    local groupTagCheck = GroupRadio("WayBookOptGroupTag", "By Tag", "tag", -110)
+    local groupTagCheck = GroupRadio("WayBookOptGroupTag", "By Tag", "tag", -68)
     groupTagCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("By Tag")
@@ -3047,14 +3180,14 @@ local function BuildOptionsUI()
     groupTagCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Second row, left of the centered pair.
-    MakeSectionHeading(optionsFrame, R2COL1, -218, "Show in the list:")
+    MakeSectionHeading(showPage, COL, -2, "Show in the list:")
 
-    local labelCheck = MakeCheck(optionsFrame, "WayBookOptLabel",
-        "Label", R2COL1 + 8, -238, ShowLabel,
+    local labelCheck = MakeCheck(showPage, "WayBookOptLabel",
+        "Label", SUB, -24, ShowLabel,
         function(v) SetColumn("showLabel", v) end)
 
-    local zoneCheck = MakeCheck(optionsFrame, "WayBookOptZone",
-        "Zone", R2COL1 + 8, -262, ShowZone,
+    local zoneCheck = MakeCheck(showPage, "WayBookOptZone",
+        "Zone", SUB, -48, ShowZone,
         function(v) SetColumn("showZone", v) end)
 
     -- Redundant while grouping by zone is on, so it goes flat and unclickable
@@ -3085,8 +3218,8 @@ local function BuildOptionsUI()
     zoneCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Not a text column: this gates whether tag badges draw under a row.
-    local tagsCheck = MakeCheck(optionsFrame, "WayBookOptTags",
-        "Tags", R2COL1 + 8, -286, ShowTags,
+    local tagsCheck = MakeCheck(showPage, "WayBookOptTags",
+        "Tags", SUB, -72, ShowTags,
         function(v) WayBookDB.showTags = v end)
 
     -- Redundant while grouping by tag is on, exactly like Zone above, so it
@@ -3122,16 +3255,16 @@ local function BuildOptionsUI()
     end)
     tagsCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local coordCheck = MakeCheck(optionsFrame, "WayBookOptCoords",
-        "Coordinates", R2COL1 + 8, -310, ShowCoords,
+    local coordCheck = MakeCheck(showPage, "WayBookOptCoords",
+        "Coordinates", RSUB, -24, ShowCoords,
         function(v) SetColumn("showCoords", v) end)
 
-    local visitCheck = MakeCheck(optionsFrame, "WayBookOptVisitCol",
-        "Visits", R2COL1 + 8, -334, ShowVisits,
+    local visitCheck = MakeCheck(showPage, "WayBookOptVisitCol",
+        "Visits", RSUB, -48, ShowVisits,
         function(v) SetColumn("showVisits", v) end)
 
-    local distCheck = MakeCheck(optionsFrame, "WayBookOptDistCol",
-        "Distance", R2COL1 + 8, -358, ShowDistance,
+    local distCheck = MakeCheck(showPage, "WayBookOptDistCol",
+        "Distance", RSUB, -72, ShowDistance,
         function(v) SetColumn("showDistance", v) end)
     distCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -3145,20 +3278,20 @@ local function BuildOptionsUI()
     distCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Column 2, top row, level with "General".
-    MakeSectionHeading(optionsFrame, COL2, -42, "Sort by:")
+    MakeSectionHeading(sortPage, COL, -2, "Sort by:")
 
     -- Mutually exclusive, so each one just writes the mode and the others
     -- untick themselves when RefreshOptions re-syncs.
     local function SortRadio(name, label, mode, y)
-        return MakeCheck(optionsFrame, name, label, COL2 - 2, y,
+        return MakeCheck(sortPage, name, label, SUB, y,
             function() return SortMode() == mode end,
             function() WayBookDB.sortMode = mode end)
     end
 
-    local sortLabelCheck  = SortRadio("WayBookOptSortLabel",  "Label",        "label",  -62)
-    local sortVisitsCheck = SortRadio("WayBookOptSortVisits", "Visits",       "visits", -86)
-    local sortRecentCheck = SortRadio("WayBookOptSortRecent", "Last visited", "recent", -110)
-    local sortNearCheck   = SortRadio("WayBookOptSortNear",   "Nearest",      "distance", -134)
+    local sortLabelCheck  = SortRadio("WayBookOptSortLabel",  "Label",        "label",  -24)
+    local sortVisitsCheck = SortRadio("WayBookOptSortVisits", "Visits",       "visits", -46)
+    local sortRecentCheck = SortRadio("WayBookOptSortRecent", "Last visited", "recent", -68)
+    local sortNearCheck   = SortRadio("WayBookOptSortNear",   "Nearest",      "distance", -90)
     sortNearCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Nearest")
@@ -3172,10 +3305,10 @@ local function BuildOptionsUI()
 
     -- Second row, right of the centered pair. The master check sits under the
     -- heading and the three below it are indented, greying out when it is off.
-    MakeSectionHeading(optionsFrame, R2COL2, -218, "Auto-Tagging")
+    MakeSectionHeading(sortPage, COL, -140, "Auto-Tagging")
 
-    local autoTagCheck = MakeCheck(optionsFrame, "WayBookOptAutoTag",
-        "Auto-tag NPCs", R2COL2 - 2, -238,
+    local autoTagCheck = MakeCheck(sortPage, "WayBookOptAutoTag",
+        "Auto-tag NPCs", COL, -162,
         AutoTagEnabled,
         function(v) WayBookDB.autoTag = v end)
     autoTagCheck:SetScript("OnEnter", function(self)
@@ -3192,7 +3325,7 @@ local function BuildOptionsUI()
     -- The same flat-and-unclickable treatment the Zone and Tags columns get,
     -- driven here by the master check rather than by a grouping mode.
     local function AutoTagSub(name, label, key, y, tip)
-        local cb = MakeCheck(optionsFrame, name, label, R2COL2 + 8, y,
+        local cb = MakeCheck(sortPage, name, label, SUB + 10, y,
             function() return Setting(key, true) end,
             function(v) WayBookDB[key] = v end)
         local baseSync = cb.Sync
@@ -3224,22 +3357,22 @@ local function BuildOptionsUI()
     end
 
     local autoRankCheck = AutoTagSub("WayBookOptAutoRank",
-        "Rare/Elite", "autoTagRank", -262,
+        "Rare/Elite", "autoTagRank", -184,
         "Tags Rare, Elite, or both, from the target's own classification.")
 
     local autoFactionCheck = AutoTagSub("WayBookOptAutoFaction",
-        "Rep faction", "autoTagFaction", -286,
+        "Rep faction", "autoTagFaction", -206,
         "Tags the reputation the NPC belongs to, read off its tooltip, with any " ..
         "leading \"The\" dropped. Klaxxi, Tillers, Golden Lotus.")
 
     local autoProfCheck = AutoTagSub("WayBookOptAutoProfession",
-        "Profession", "autoTagProfession", -310,
+        "Profession", "autoTagProfession", -228,
         "Tags what the NPC does, from the title under its name. Flight Master, " ..
         "Innkeeper, Quartermaster. The faction is stripped out first, so " ..
         "\"Tillers Quartermaster\" becomes Quartermaster.")
 
-    local arriveSlider = MakeSlider(optionsFrame, "WayBookOptArrive",
-        "Clear arrow within (yards)", 120, -410, 0, 60, 1,
+    local arriveSlider = MakeSlider(general, "WayBookOptArrive",
+        "Clear arrow within (yards)", COL + 40, -206, 0, 60, 1,
         ArriveDistance,
         function(v)
             WayBookDB.arriveDistance = v
@@ -3255,14 +3388,92 @@ local function BuildOptionsUI()
     end)
     arriveSlider:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local fontSlider = MakeSlider(optionsFrame, "WayBookOptFont",
-        "List font size", 120, -468, K.MIN_LIST_FONT_SIZE, K.MAX_LIST_FONT_SIZE, 1,
+    MakeSectionHeading(showPage, COL, -100, "Sizes")
+
+    -- A stand-in list row, so both sliders can be judged against the thing they
+    -- actually change without flipping to the List tab and back. It is built
+    -- from the same pieces a real row uses: the text goes through StyleFont, so
+    -- RestyleAll resizes it with everything else, and the badge takes its font
+    -- and height from BadgeFont/BadgeHeight exactly as the row badges do.
+    -- Created with a font object, not bare. A FontString with no font set
+    -- throws "Font not set" on the first SetText, which is why AcquireBadge
+    -- applies BadgeFont before it ever assigns text.
+    local previewText = showPage:CreateFontString(nil, "ARTWORK",
+        "GameFontNormalSmall")
+    previewText:SetPoint("TOPLEFT", showPage, "TOPLEFT", SUB, -124)
+    previewText:SetText(K.COLOR_LABEL .. "Auctioneer Stormwind|r  -  " ..
+        K.COLOR_COORDS .. "Stormwind City|r  -  " ..
+        K.COLOR_COORDS .. "(58.2, 61.4)|r")
+    StyleFont(previewText, "GameFontNormalSmall")
+
+    local previewBadge = CreateFrame("Frame", nil, showPage,
+        BackdropTemplateMixin and "BackdropTemplate" or nil)
+    previewBadge:SetBackdrop({
+        bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = K.BADGE_EDGE_SIZE,
+        insets = { left = K.BADGE_INSET, right = K.BADGE_INSET,
+                   top = K.BADGE_INSET, bottom = K.BADGE_INSET },
+    })
+    do
+        local r, g, b = HexToRGB(K.COLOR_TAG)
+        previewBadge:SetBackdropColor(r, g, b, 0.16)
+        previewBadge:SetBackdropBorderColor(r, g, b, 0.8)
+    end
+    previewBadge.text = previewBadge:CreateFontString(nil, "ARTWORK")
+    previewBadge.text:SetPoint("CENTER", previewBadge, "CENTER", 0, 0)
+    previewBadge.text:SetFont(BadgeFont())
+    previewBadge.text:SetTextColor(HexToRGB(K.COLOR_TAG))
+    previewBadge.text:SetText("Auctioneer")
+    -- Anchored under the text rather than at a fixed offset, so it slides down
+    -- on its own as the list font grows, the way a real row's badges do.
+    previewBadge:SetPoint("TOPLEFT", previewText, "BOTTOMLEFT", 0, -K.BADGE_ROW_GAP)
+
+    -- Called by both sliders. The list font moves the text through RestyleAll,
+    -- which cannot know about the badge, and the tag font moves nothing at all
+    -- on this page unless something asks it to.
+    local function RefreshPreview()
+        previewBadge.text:SetFont(BadgeFont())
+        previewBadge:SetSize(previewBadge.text:GetStringWidth() + K.BADGE_PADDING * 2,
+            BadgeHeight())
+    end
+    RefreshPreview()
+
+    local fontSlider = MakeSlider(showPage, "WayBookOptFont",
+        "List font size", COL + 40, -176, K.MIN_LIST_FONT_SIZE, K.MAX_LIST_FONT_SIZE, 1,
         ListFontSize,
         function(v)
             WayBookDB.listFontSize = v
             RestyleAll()
+            RefreshPreview()
             WayBook:Refresh()
         end)
+
+    local tagSlider = MakeSlider(showPage, "WayBookOptTagFont",
+        "Tag size", COL + 40, -222, K.MIN_TAG_FONT_SIZE, K.MAX_TAG_FONT_SIZE, 1,
+        TagFontSize,
+        function(v)
+            WayBookDB.tagFontSize = v
+            RefreshPreview()
+            -- Refresh alone is enough for the list itself: badge fonts and pill
+            -- heights are re-applied on every layout pass rather than only at
+            -- creation, so pooled badges pick the new size up without a reload.
+            WayBook:Refresh()
+            if editFrame and editFrame:IsShown() and editFrame.RefreshChips then
+                editFrame.RefreshChips()
+            end
+        end)
+    tagSlider:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Tag size")
+        GameTooltip:AddLine(
+            "Point size for the tag badges under each row, and for the same " ..
+            "badges in the Edit window. Separate from the list font so badges " ..
+            "can stay smaller than the labels they sit under. 8 is the default.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    tagSlider:SetScript("OnLeave", function() GameTooltip:Hide() end)
     fontSlider:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("List font size")
@@ -3273,11 +3484,24 @@ local function BuildOptionsUI()
     end)
     fontSlider:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local exportBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    exportBtn:SetSize(140, 22)
-    exportBtn:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 74)
-    exportBtn:SetText("Export Waypoints")
-    exportBtn:SetScript("OnClick", function() ToggleExport() end)
+    -- Four buttons in a 2x2 block at the foot of the General page. They used
+    -- to line the bottom of the Options window; with that window gone this is
+    -- the only page that has room for them and the only one they belong on.
+    -- Anchored to the window rather than to the page, so the lower row lands on
+    -- the same line as Add Waypoint and Clear Arrow do on the List tab. The
+    -- page's own bottom edge sits well above that, which left these floating.
+    local function PageButton(label, w, point, x, y, onClick)
+        local b = CreateFrame("Button", nil, general, "UIPanelButtonTemplate")
+        b:SetSize(w, 22)
+        b:SetPoint(point, frame, point, x, y)
+        b:SetText(label)
+        ShrinkOnce(b:GetFontString(), K.BUTTON_FONT_DELTA)
+        b:SetScript("OnClick", onClick)
+        return b
+    end
+
+    local exportBtn = PageButton("Export Waypoints", 168, "BOTTOMLEFT", 18, K.BUTTON_ROW_Y + 26,
+        function() ToggleExport() end)
     exportBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine("Export Waypoints")
@@ -3289,25 +3513,77 @@ local function BuildOptionsUI()
     end)
     exportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local resetBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetBtn:SetSize(140, 22)
-    resetBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 20, 46)
-    resetBtn:SetText("Restore window")
-    resetBtn:SetScript("OnClick", function()
+    -- Retail's Settings frame is tried first, and deliberately so. The legacy
+    -- standalone KeyBindingFrame still exists on Retail, but loading it there
+    -- throws inside Blizzard's own KeyBindingFrame_LoadCategories
+    -- (Blizzard_BindingUI.lua:96 on 12.1.0), so probing for it before Settings
+    -- guarantees an error on the client most likely to be running.
+    --
+    -- Every call is wrapped: a route that is present but broken has to fall
+    -- through to the next one rather than surfacing as a WayBook error, which
+    -- is exactly what the first version of this did.
+    local function OpenKeyBindings()
+        if Settings and Settings.OpenToCategory then
+            local id = Settings.KEYBINDINGS_CATEGORY_ID
+            if id and pcall(Settings.OpenToCategory, id) then return true end
+            if pcall(Settings.OpenToCategory, "Keybindings") then return true end
+        end
+        -- Classic: the standalone frame is the only route, and it works there.
+        if KeyBindingFrame_LoadUI and pcall(KeyBindingFrame_LoadUI) then
+            if KeyBindingFrame and ShowUIPanel
+                and pcall(ShowUIPanel, KeyBindingFrame) then
+                return true
+            end
+        end
+        if InterfaceOptionsFrame_OpenToCategory
+            and pcall(InterfaceOptionsFrame_OpenToCategory, "Keybindings") then
+            return true
+        end
+        return false
+    end
+
+    local keysBtn = PageButton("Open Key Bindings", 168, "BOTTOMRIGHT", -18, K.BUTTON_ROW_Y + 26, function()
+        if not OpenKeyBindings() then
+            Print("Could not open Key Bindings from here. Press Escape, then " ..
+                "Options, then Key Bindings, and scroll to AddOns and WayBook.")
+        end
+    end)
+    keysBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Open Key Bindings")
+        GameTooltip:AddLine(
+            "Jumps to the game's key bindings panel. WayBook's four bindings are " ..
+            "under the AddOns heading and none are bound out of the box: toggle " ..
+            "the list, toggle these options, add a waypoint, clear the arrow.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    keysBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local resetBtn = PageButton("Restore window", 168, "BOTTOMLEFT", 18, K.BUTTON_ROW_Y, function()
         WayBookDB.point = nil
+        WayBookDB.size = nil
+        frame:SetSize(K.FRAME_WIDTH, K.FRAME_HEIGHT)
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end)
+    resetBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Restore window")
+        GameTooltip:AddLine("Puts the main window back in the middle of the screen.",
+            1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    resetBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local defaultsBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    defaultsBtn:SetSize(120, 22)
-    defaultsBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -20, 46)
-    defaultsBtn:SetText("Restore defaults")
+    local defaultsBtn = PageButton("Restore defaults", 168, "BOTTOMRIGHT", -18, K.BUTTON_ROW_Y, nil)
     defaultsBtn:SetScript("OnClick", function()
         WayBookDB.arriveDistance = K.DEFAULT_ARRIVE_DISTANCE
         WayBookDB.listFontSize   = K.DEFAULT_LIST_FONT_SIZE
+        WayBookDB.tagFontSize    = K.DEFAULT_TAG_FONT_SIZE
         WayBookDB.sortDescending = false
         WayBookDB.clearArrowOnLogin = true
+        WayBookDB.confirmDeletions  = true
         WayBookDB.colorblindMode = false
         WayBookDB.showLabel      = true
         WayBookDB.showZone       = false
@@ -3348,31 +3624,31 @@ local function BuildOptionsUI()
     -- leaves it alone - it is chrome, not list content.
     local GetMeta = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
     local version = GetMeta and GetMeta("WayBook", "Version") or "?"
-    local footer = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-    footer:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 12)
+    -- On the Display page rather than General, whose own bottom is taken up by
+    -- the 2x2 button block. Anchored to the window rather than to the page for
+    -- the same reason those buttons are: the page's bottom edge sits well above
+    -- the window's, which left this floating in the middle of the panel.
+    local footer = showPage:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    footer:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 18, K.BUTTON_ROW_Y)
     footer:SetText("WayBook v" .. version .. "  |  MIT License")
 
-    optionsFrame.controls = {
+    -- Flat, exactly as it was on the old window. RefreshOptions walks this
+    -- list without caring which page each control sits on.
+    frame.optionControls = {
         keepCheck, iconCheck, groupNoneCheck, groupZoneCheck, groupTagCheck,
-        reverseCheck, loginCheck, colorblindCheck, barCheck,
+        reverseCheck, loginCheck, colorblindCheck, barCheck, confirmCheck,
         labelCheck, tagsCheck, zoneCheck, coordCheck, visitCheck, distCheck,
         sortLabelCheck, sortVisitsCheck, sortRecentCheck, sortNearCheck,
         autoTagCheck, autoRankCheck, autoFactionCheck, autoProfCheck,
-        arriveSlider, fontSlider,
+        arriveSlider, fontSlider, tagSlider,
     }
 
-    optionsFrame:SetScript("OnShow", function(self)
-        self:ClearAllPoints()
-        self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        RefreshOptions()
-    end)
-
-    optionsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    return { general = general, sort = sortPage, show = showPage }
 end
 
 function RefreshOptions()
-    if not optionsFrame or not optionsFrame.controls then return end
-    for _, control in ipairs(optionsFrame.controls) do
+    if not frame or not frame.optionControls then return end
+    for _, control in ipairs(frame.optionControls) do
         if control.Sync then control.Sync() end
     end
 end
@@ -3387,42 +3663,84 @@ function RefreshMainControls()
     end
 end
 
+-- Tabs. "list" is the waypoint list itself, which is not a page frame but a
+-- set of widgets parented straight to the main window, so it toggles as a
+-- group rather than as a container. Everything else is one of the five option
+-- pages BuildOptionPages returns.
+local optionPages, tabButtons
+-- Ordered tab keys, kept alongside the keyed tabButtons table so the strip can
+-- be laid out again from scratch whenever the window is resized.
+local tabOrder = {}
+
+-- Divides the window's current width into equal columns and pins each tab by
+-- both edges. Called once at build and again on every size change, so the
+-- strip is always exactly as wide as the window rather than as wide as
+-- K.FRAME_WIDTH was when the addon loaded.
+local function LayoutTabs()
+    if not frame or #tabOrder == 0 then return end
+    local MARGIN = 11
+    local span = frame:GetWidth() - MARGIN * 2
+    for i, key in ipairs(tabOrder) do
+        local b = tabButtons and tabButtons[key]
+        if b then
+            local left  = MARGIN + math.floor(span * (i - 1) / #tabOrder)
+            local right = MARGIN + math.floor(span * i / #tabOrder)
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT",  frame, "BOTTOMLEFT", left,  K.TAB_Y)
+            b:SetPoint("TOPRIGHT", frame, "BOTTOMLEFT", right, K.TAB_Y)
+        end
+    end
+end
+local currentTab = "list"
+
+function CurrentTab() return currentTab end
+
+function SelectTab(name)
+    if not frame then return end
+    currentTab = name
+
+    local isList = (name == "list")
+    for _, w in ipairs(frame.listWidgets or {}) do
+        if isList then w:Show() else w:Hide() end
+    end
+    for key, page in pairs(optionPages or {}) do
+        if key == name then page:Show() else page:Hide() end
+    end
+    for key, btn in pairs(tabButtons or {}) do
+        btn:SetSelected(key == name)
+    end
+
+    if isList then
+        WayBook:Refresh()
+    else
+        RefreshOptions()
+    end
+end
+
+-- There is no Options window any more, so this switches the main window to
+-- the Options tab, and back to the list if it is already there. Keeps
+-- /wb options and the "Toggle options" binding doing something sensible.
 function ToggleOptions()
-    if not optionsFrame then return end
-    if optionsFrame:IsShown() then optionsFrame:Hide() else optionsFrame:Show() end
+    if not frame then return end
+    if not frame:IsShown() then frame:Show() end
+    if CurrentTab() == "general" then SelectTab("list") else SelectTab("general") end
 end
 
 --------------------------------------------------------------------------
 -- Collapse bar
 --
--- Optional (Options: "Auto-collapse to text bar"). When on, the main window
--- and whichever of Options/Export/Share/Edit happen to be open hide
--- themselves a short delay after the mouse leaves all of them, and a small
--- draggable "WayBook" bar stays on screen instead. Hovering the bar re-opens
--- the main window, anchored at whichever of its corners sits nearest the
--- bar, so it grows toward the middle of the screen rather than off the
--- nearest edge.
+-- Optional (Options: "Collapse to text bar"). When on, a small draggable
+-- "WayBook" bar sits on screen and clicking it switches the main window on
+-- and off. The window reopens anchored at whichever of its corners sits
+-- nearest the bar, so it grows toward the middle of the screen rather than
+-- off the nearest edge.
 --
--- Tracking this with plain OnEnter/OnLeave on the five windows does not
--- work: every button, checkbox, row and slider inside them is its own
--- mouse-enabled frame, and moving onto one of those switches WoW's mouse
--- focus away from its parent, firing the parent's OnLeave even though the
--- cursor never left the window's own rectangle. A ticker that polls
--- IsMouseOver() - a bounds check, not a mouse-focus event - on every
--- relevant frame each tick is what actually reflects "is the mouse still
--- somewhere inside the interface," regardless of which specific child
--- widget is directly under it.
+-- Was hover-driven until 1.27.0: the bar expanded on mouseover and a ticker
+-- polling IsMouseOver() on every window decided when the mouse had left the
+-- whole interface, because plain OnLeave fires as soon as the cursor moves
+-- onto any child widget. A click toggle needs none of that, so the ticker,
+-- its delay timer and the borrowed-frame list all went with it.
 --------------------------------------------------------------------------
-
-local collapseTimer
-local collapseWatcher
-
-local function CancelCollapse()
-    if collapseTimer then
-        collapseTimer:Cancel()
-        collapseTimer = nil
-    end
-end
 
 -- Set only for the duration of a collapse, and read by the main frame's own
 -- OnHide. Collapsing is not closing: the list folds away to the bar while
@@ -3440,99 +3758,39 @@ local function CollapseToBar()
     end
 end
 
-function StopCollapseWatcher()
-    if collapseWatcher then
-        collapseWatcher:Cancel()
-        collapseWatcher = nil
+-- The window goes back exactly where it was last left. It used to be parked
+-- against whichever corner of the bar was nearest, which meant dragging the
+-- bar dragged the window's home with it.
+local function RestoreFramePosition()
+    if not frame then return end
+    if WayBookDB.size then
+        local w, h = unpack(WayBookDB.size)
+        if w and h then frame:SetSize(w, h) end
     end
-    CancelCollapse()
-end
-
--- A delay rather than an immediate hide, so the mouse has time to cross the
--- gap between the bar and the window, or between the window and a child
--- window, without everything snapping shut mid-move. Only starts one timer -
--- repeated calls while the mouse stays away do not keep pushing it back, or
--- it would never fire.
-local function ScheduleCollapse()
-    if not AutoCollapseEnabled() then return end
-    if collapseTimer then return end
-    collapseTimer = C_Timer.NewTimer(K.COLLAPSE_DELAY, function()
-        collapseTimer = nil
-        CollapseToBar()
-    end)
-end
-
--- Frames that belong to a WayBook interaction without being WayBook's own
--- windows: Blizzard's shared dropdown lists, which the Edit window's tag
--- picker opens into, and the shared StaticPopups, which the delete
--- confirmation uses. Both are top-level frames parented to UIParent rather
--- than to anything of WayBook's, so the six checks below never saw them and
--- the mouse moving onto one read as "left the interface entirely".
---
--- This is the 1.26.1 bug one level further out. There the frames the watcher
--- missed were children sitting inside the windows; here they are siblings
--- sitting alongside them. Anything WayBook opens that is not parented to one
--- of its own frames needs adding here.
-K.BORROWED_FRAMES = { "DropDownList1", "DropDownList2" }
-for i = 1, (STATICPOPUP_NUMDIALOGS or 4) do
-    K.BORROWED_FRAMES[#K.BORROWED_FRAMES + 1] = "StaticPopup" .. i
-end
-
-local function IsMouseOverInterface()
-    if barFrame    and barFrame:IsShown()    and barFrame:IsMouseOver()    then return true end
-    if frame       and frame:IsShown()       and frame:IsMouseOver()       then return true end
-    if optionsFrame and optionsFrame:IsShown() and optionsFrame:IsMouseOver() then return true end
-    if exportFrame and exportFrame:IsShown() and exportFrame:IsMouseOver() then return true end
-    if shareFrame  and shareFrame:IsShown()  and shareFrame:IsMouseOver()  then return true end
-    if editFrame   and editFrame:IsShown()   and editFrame:IsMouseOver()   then return true end
-    for _, name in ipairs(K.BORROWED_FRAMES) do
-        local f = _G[name]
-        if f and f:IsShown() and f:IsMouseOver() then return true end
-    end
-    return false
-end
-
-function StartCollapseWatcher()
-    if collapseWatcher or not AutoCollapseEnabled() then return end
-    collapseWatcher = C_Timer.NewTicker(K.WATCH_INTERVAL, function()
-        if not AutoCollapseEnabled() then
-            StopCollapseWatcher()
-            return
-        end
-        if IsMouseOverInterface() then
-            CancelCollapse()
-        else
-            ScheduleCollapse()
-        end
-    end)
-end
-
--- Anchors whichever corner of the main window sits nearest the bar to the
--- bar's opposite corner, so the window always grows toward the middle of the
--- screen no matter which corner the player parks the bar in.
-local function PositionFrameNearBar()
-    if not (frame and barFrame) then return end
-    local screenW, screenH = UIParent:GetSize()
-    local bx, by = barFrame:GetCenter()
-    if not (bx and by) then return end
-
-    local isLeft   = bx < (screenW / 2)
-    local isBottom = by < (screenH / 2)
-
-    local frameAnchor = (isBottom and "BOTTOM" or "TOP") .. (isLeft and "LEFT" or "RIGHT")
-    local barAnchor   = (isBottom and "TOP" or "BOTTOM") .. (isLeft and "RIGHT" or "LEFT")
-    local xOff = isLeft and K.BAR_GAP or -K.BAR_GAP
-    local yOff = isBottom and K.BAR_GAP or -K.BAR_GAP
-
     frame:ClearAllPoints()
-    frame:SetPoint(frameAnchor, barFrame, barAnchor, xOff, yOff)
+    if WayBookDB.point then
+        local point, relPoint, x, y = unpack(WayBookDB.point)
+        frame:SetPoint(point, UIParent, relPoint, x, y)
+    else
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
 end
 
 local function ExpandFromBar()
     if not AutoCollapseEnabled() then return end
     if frame and not frame:IsShown() then
-        PositionFrameNearBar()
-        frame:Show()   -- frame's own OnShow starts the collapse watcher
+        RestoreFramePosition()
+        frame:Show()
+    end
+end
+
+-- The bar is a switch: one click opens the list, the next puts it away.
+local function ToggleFromBar()
+    if not AutoCollapseEnabled() then return end
+    if frame and frame:IsShown() then
+        CollapseToBar()
+    else
+        ExpandFromBar()
     end
 end
 
@@ -3551,7 +3809,13 @@ local function BuildBarUI()
     barFrame:SetMovable(true)
     barFrame:EnableMouse(true)
     barFrame:RegisterForDrag("LeftButton")
-    barFrame:SetScript("OnDragStart", barFrame.StartMoving)
+    -- Dragging and clicking share the left button, and a drag still ends with
+    -- an OnMouseUp. Without this the bar would toggle every time it was moved.
+    local draggedThisClick = false
+    barFrame:SetScript("OnDragStart", function(self)
+        draggedThisClick = true
+        self:StartMoving()
+    end)
     barFrame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         local point, _, relPoint, x, y = self:GetPoint()
@@ -3567,10 +3831,23 @@ local function BuildBarUI()
     barFrame:SetSize(text:GetStringWidth() + K.BAR_PADDING * 2,
         text:GetStringHeight() + K.BAR_PADDING)
 
-    -- No OnLeave here: once the frame is shown, the collapse watcher (started
-    -- from the frame's own OnShow) is what decides when the mouse has left
-    -- the whole interface, bar included.
-    barFrame:SetScript("OnEnter", ExpandFromBar)
+    barFrame:SetScript("OnMouseUp", function(_, button)
+        if draggedThisClick then
+            draggedThisClick = false
+            return
+        end
+        if button == "LeftButton" then ToggleFromBar() end
+    end)
+
+    barFrame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("WayBook")
+        GameTooltip:AddLine("Click to open the list, click again to put it away.",
+            1, 1, 1, true)
+        GameTooltip:AddLine("Drag to move the bar.", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    barFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     if WayBookDB.barPoint then
         local point, relPoint, x, y = unpack(WayBookDB.barPoint)
@@ -3599,14 +3876,23 @@ local function BuildUI()
         insets = { left = 11, right = 12, top = 12, bottom = 11 },
     })
     AddOpaqueBackground(frame)
-    -- Without this, the main window sits at the default "MEDIUM" strata,
-    -- the same one Questie's own tracker uses (TrackerBaseFrame.lua) - a tie
-    -- resolved by whichever last got raised, not by which one the player is
-    -- actually looking at. A distinctly higher strata wins regardless, same
-    -- reasoning as Export needing FULLSCREEN_DIALOG over Options.
+    -- Without this, the main window sits at the default "MEDIUM" strata, where
+    -- most other addon windows also sit - a tie resolved by whichever last got
+    -- raised, not by which one the player is actually looking at. A distinctly
+    -- higher strata wins regardless, same reasoning as Export needing
+    -- FULLSCREEN_DIALOG over the main window.
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
     frame:SetMovable(true)
+    -- SetResizeBounds, not the older SetMinResize/SetMaxResize pair, which this
+    -- client no longer has. The minimums are not arbitrary: the option pages
+    -- are laid out at fixed coordinates, so the window cannot shrink below what
+    -- the tallest of them (Sort/Auto-Tag) and the longest tab label need.
+    frame:SetResizable(true)
+    if frame.SetResizeBounds then
+        frame:SetResizeBounds(K.MIN_FRAME_WIDTH, K.MIN_FRAME_HEIGHT,
+            K.MAX_FRAME_WIDTH, K.MAX_FRAME_HEIGHT)
+    end
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
@@ -3631,7 +3917,7 @@ local function BuildUI()
     local function TextButton(label, anchor, relPoint, x, tipTitle, tipBody, onClick, binding)
         local b = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         b:SetSize(K.BUTTON_WIDTH, K.BUTTON_HEIGHT)
-        b:SetPoint(anchor, frame, relPoint, x, 16)
+        b:SetPoint(anchor, frame, relPoint, x, K.BUTTON_ROW_Y)
         b:SetText(label)
         ShrinkOnce(b:GetFontString(), K.BUTTON_FONT_DELTA)
         b:SetScript("OnClick", onClick)
@@ -3654,21 +3940,19 @@ local function BuildUI()
         return b
     end
 
-    TextButton("Add Waypoint", "BOTTOMLEFT", "BOTTOMLEFT", 16,
+    local addBtn = TextButton("Add Waypoint", "BOTTOMLEFT", "BOTTOMLEFT", 18,
         "Add Waypoint",
         "With a target selected, saves your position labeled with its name. With no " ..
         "target, saves your position and asks you to name it.",
         AddTargetWaypoint, "WAYBOOK_ADD_TARGET")
 
-    TextButton("Clear Arrow", "BOTTOM", "BOTTOM", 0,
+    local clearBtn = TextButton("Clear Arrow", "BOTTOMRIGHT", "BOTTOMRIGHT", -18,
         "Clear Arrow",
         "Drops the crazy arrow's target. Waypoints are untouched.",
         ClearArrow, "WAYBOOK_CLEAR_ARROW")
 
-    TextButton("Options", "BOTTOMRIGHT", "BOTTOMRIGHT", -16,
-        "Options",
-        "Configure display and behavior options.",
-        function() ToggleOptions() end, "WAYBOOK_TOGGLE_OPTIONS")
+    -- No Options button: the Options tab replaced it. Add Waypoint and Clear
+    -- Arrow belong to the list, so they come and go with it.
 
     -- SearchBoxTemplate brings its own magnifier, placeholder string and clear
     -- button. Auctionator, WeakAuras and Journalator all use it on this client,
@@ -3765,26 +4049,201 @@ local function BuildUI()
 
     scrollFrame = CreateFrame("ScrollFrame", "WayBookScroll", frame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, -114)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, 46)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -34, K.PAGE_BOTTOM)
 
     content = CreateFrame("Frame", nil, scrollFrame)
     content:SetSize(K.FRAME_WIDTH - 56, 1)
     scrollFrame:SetScrollChild(content)
+
+    -- Shown together on the List tab and hidden together on every other one.
+    frame.listWidgets = {
+        searchBox, groupNoneCheck, groupZoneCheck, groupTagCheck, sortDirBtn,
+        countText, scrollFrame, addBtn, clearBtn,
+    }
+
+    optionPages = BuildOptionPages()
+
+    -- Which tab art this client actually has, decided once. A texture that
+    -- failed to load reports nil from GetTexture, so this asks the client
+    -- rather than branching on flavor, and a probe frame is thrown away
+    -- immediately rather than left parented to anything.
+    -- Tabs hung below the frame, the way the character sheet and the mailbox
+    -- hang theirs.
+    --
+    -- Built on PanelTabButtonTemplate rather than from raw textures. Two
+    -- hand-rolled attempts got the selected state wrong: the active and
+    -- inactive art are not interchangeable at one size, so swapping the file
+    -- on a fixed-size texture makes the selected tab read as shrinking and
+    -- drops its label off the bottom. The template already knows the correct
+    -- geometry for both states, and Auctionator inherits it on MoP Classic,
+    -- so it is present there at least.
+    --
+    -- Measured off CharacterFrameTab1 on MoP Classic 5.5.4 rather than guessed:
+    -- height 32, anchored TOPLEFT to its parent's BOTTOMLEFT at 11, 2, and the
+    -- template creates Left/Middle/Right plus LeftDisabled/MiddleDisabled/
+    -- RightDisabled. Its own GetWidth reads 10, because the button's width is
+    -- not what draws the tab - PanelTemplates_TabResize sets the Middle
+    -- texture's width and the button's together, and setting only the button
+    -- leaves the art stretching independently. That was the overlapping strip.
+    --
+    -- PanelTemplates_TabResize, SelectTab, SetTab and SetNumTabs are all
+    -- present on that client. Retail is unverified, so the calls stay guarded.
+    local TABS = {
+        { key = "list",    label = "List"    },
+        { key = "general", label = "Options" },
+        { key = "sort",    label = "Sort/Auto-Tag" },
+        { key = "show",    label = "Display" },
+    }
+    tabButtons = {}
+    -- No PanelTemplates_TabResize and no overlap. The helper sizes a tab to its
+    -- own label and kept overriding whatever width it was handed, which put
+    -- four tabs at roughly 409px across a 400px frame.
+    --
+    -- Each tab is instead pinned by BOTH its left and right edges to the
+    -- frame's bottom edge, so its width is a consequence of the frame rather
+    -- than a number computed here that has to happen to match. Divide the
+    -- frame into equal columns, hand each tab two anchors, and the strip is
+    -- exactly as wide as the window by construction.
+    -- Positions come from LayoutTabs, called once below and again on every
+    -- resize, so the strip follows the window rather than the width it had at
+    -- load. This loop only builds them.
+    tabOrder = {}
+    for i, tab in ipairs(TABS) do
+        -- Named on the FrameTabN convention the PanelTemplates helpers look up.
+        local name = "WayBookFrameTab" .. i
+        local ok, b = pcall(CreateFrame, "Button", name, frame,
+            "PanelTabButtonTemplate")
+        if not ok or not b then
+            b = CreateFrame("Button", name, frame, "UIPanelButtonTemplate")
+        end
+        b:SetID(i)
+        b:SetText(tab.label)
+        b:SetHeight(K.TAB_HEIGHT)
+        tabOrder[#tabOrder + 1] = tab.key
+
+        -- Pinned to the tab's top rather than centred in it, so the label stays
+        -- level across the strip while the selected tab grows downward beneath
+        -- it. Centring would drag the selected tab's text down with the art.
+        local fs = b:GetFontString()
+        if fs then
+            fs:ClearAllPoints()
+            fs:SetPoint("TOP", b, "TOP", 0, K.TAB_LABEL_Y)
+        end
+
+        -- The template ships two sets of art and neither one is named, so the
+        -- PanelTemplates_SelectTab helpers cannot find them: they look for
+        -- .Left and .LeftDisabled, get nil, and return without effect. Regions
+        -- are therefore sorted by atlas name instead, "activetab" first because
+        -- the selected atlases contain both substrings.
+        --
+        -- The selected set is then hidden permanently. It is drawn for a tab
+        -- that extends upward into a frame, and it ignores the button's height
+        -- entirely, so showing it produced a tab half again as tall as its
+        -- neighbours with a gold gradient bleeding out of it. The unselected
+        -- art sizes correctly, so every tab keeps it and selection is carried
+        -- by the two things that do behave: the tab reaching further down, and
+        -- its label going white against the others' gold.
+        local normalArt = {}
+        for _, region in ipairs({ b:GetRegions() }) do
+            local atlas = region.GetAtlas and region:GetAtlas()
+            if atlas then
+                if atlas:find("activetab", 1, true) then
+                    region:Hide()
+                    region.Show = region.Hide   -- the template re-shows it on state changes
+                else
+                    normalArt[#normalArt + 1] = region
+                end
+            end
+        end
+
+        b.SetSelected = function(self, on)
+            local h = K.TAB_HEIGHT + (on and K.TAB_SELECT_GROW or 0)
+            self:SetHeight(h)
+            -- The art carries its own height from the template, so resizing the
+            -- button alone changed nothing on screen: the tabs stayed at the
+            -- template's 32 and the selected one never visibly moved. Sizing
+            -- the regions is what actually does it, and since each is anchored
+            -- from its top, the extra height on the selected tab grows
+            -- downward past its neighbours.
+            for _, r in ipairs(normalArt) do
+                r:SetHeight(h)
+            end
+            local text = self:GetFontString()
+            if text then
+                -- Pushed down by the same amount the tab grew, so the space
+                -- below the label is identical on every tab and the selected
+                -- one simply gains headroom above its text.
+                text:ClearAllPoints()
+                text:SetPoint("TOP", self, "TOP", 0,
+                    K.TAB_LABEL_Y - (on and K.TAB_SELECT_GROW or 0))
+                if on then
+                    text:SetTextColor(1, 1, 1)
+                else
+                    text:SetTextColor(1, 0.82, 0)
+                end
+            end
+            self:SetEnabled(not on)
+        end
+
+        b:SetScript("OnClick", function() SelectTab(tab.key) end)
+        tabButtons[tab.key] = b
+    end
+
+    -- Lets the helpers address the strip as a set, which is what SetTab wants.
+    frame.numTabs = #TABS
+    if PanelTemplates_SetNumTabs then
+        pcall(PanelTemplates_SetNumTabs, frame, #TABS)
+    end
+    LayoutTabs()
+
+    -- Resize grip, tucked into the corner to the right of Clear Arrow so the
+    -- two never overlap.
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        WayBookDB.size = { frame:GetWidth(), frame:GetHeight() }
+        local point, _, relPoint, x, y = frame:GetPoint()
+        if point then WayBookDB.point = { point, relPoint, x, y } end
+    end)
+
+    -- Two things do not follow the frame on their own: the scroll child's width
+    -- is frozen at whatever it was built with, and the tab strip divides a
+    -- width rather than tracking one. Both are recomputed here.
+    frame:SetScript("OnSizeChanged", function(self)
+        if content then content:SetWidth(self:GetWidth() - 56) end
+        LayoutTabs()
+        if self:IsShown() then WayBook:Refresh() end
+    end)
 
     -- Escape closes the frame through UISpecialFrames without going via Toggle,
     -- so keep the saved state in sync from the frame's own handlers.
     frame:SetScript("OnShow", function(self)
         self:Raise()
         WayBookDB.shown = true
-        -- Settings can move while this window is hidden (Options stays usable
-        -- on its own), so re-tick the row rather than trusting its last state.
+        -- Always opens on the list. Coming back to whichever options page was
+        -- last open reads as the window having failed to reopen, since the
+        -- waypoints are what it is for.
+        --
+        -- Guarded because OnShow fires during BuildUI, before the tab strip
+        -- exists; the explicit SelectTab at the end of Init covers that pass.
+        if tabButtons and tabButtons.list then SelectTab("list") end
+        -- Settings can move while this window is hidden, so re-tick the row
+        -- rather than trusting its last state.
         RefreshMainControls()
         WayBook:Refresh()
-        if AutoCollapseEnabled() then StartCollapseWatcher() end
     end)
-    frame:SetScript("OnHide", function()
+    frame:SetScript("OnHide", function(self)
         WayBookDB.shown = false
-        StopCollapseWatcher()
+        -- Captured on the way out as well as on drag stop, so a window moved
+        -- by anything other than a drag still comes back where it was left.
+        local point, _, relPoint, x, y = self:GetPoint()
+        if point then WayBookDB.point = { point, relPoint, x, y } end
         -- Drop the filter on the way out. Reopening to a book that is still
         -- hiding most of itself reads as waypoints having gone missing.
         if searchBox then
@@ -3801,20 +4260,13 @@ local function BuildUI()
         -- are part way through using with it made the bar unusable for
         -- anything except browsing the list.
         if not collapsingToBar then
-            if optionsFrame then optionsFrame:Hide() end
             if exportFrame then exportFrame:Hide() end
             if shareFrame then shareFrame:Hide() end
             if editFrame then editFrame:Hide() end
         end
     end)
 
-    if WayBookDB.point then
-        local point, relPoint, x, y = unpack(WayBookDB.point)
-        frame:ClearAllPoints()
-        frame:SetPoint(point, UIParent, relPoint, x, y)
-    else
-        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    end
+    RestoreFramePosition()
 end
 
 -- The frame's own OnShow/OnHide handlers record the state.
@@ -3854,6 +4306,11 @@ end
 
 WayBook:RegisterEvent("PLAYER_LOGIN")
 WayBook:SetScript("OnEvent", function()
+    -- Captured before anything is written into the table, because the very
+    -- next line puts a key in it and no later check could tell a brand new
+    -- character from a returning one.
+    local freshProfile = (WayBookDB == nil) or (next(WayBookDB) == nil)
+
     WayBookDB = WayBookDB or {}
     WayBookDB.notes = WayBookDB.notes or {}
 
@@ -3878,8 +4335,17 @@ WayBook:SetScript("OnEvent", function()
     -- existing profile carries that old on/off state only in the global, so
     -- migrate it into WayBook's own setting once, then put the global back to
     -- a normal default so it stops being WayBook's business going forward.
+    --
+    -- New characters skip that migration and start on. A book whose entries
+    -- delete themselves the moment you walk to them is not a book, and
+    -- TomTom's shipped cleardistance would otherwise decide the default for
+    -- someone who has never touched either setting.
     if WayBookDB.keepOnArrival == nil then
-        WayBookDB.keepOnArrival = TomTom.profile.persistence.cleardistance == 0
+        if freshProfile then
+            WayBookDB.keepOnArrival = true
+        else
+            WayBookDB.keepOnArrival = TomTom.profile.persistence.cleardistance == 0
+        end
     end
     TomTom.profile.persistence.cleardistance =
         WayBookDB.savedClearDistance or K.DEFAULT_CLEAR_DISTANCE
@@ -3934,7 +4400,6 @@ WayBook:SetScript("OnEvent", function()
     SyncZoneColumn(GroupByZone())
 
     BuildUI()
-    BuildOptionsUI()
     BuildExportUI()
     BuildShareUI()
     BuildEditUI()
@@ -3942,7 +4407,6 @@ WayBook:SetScript("OnEvent", function()
     SetupMinimapButton()
 
     hooksecurefunc(TomTom, "AddWaypoint", QueueRefresh)
-    hooksecurefunc(TomTom, "AddWaypoint", AutoTagQuestieWaypoint)
     hooksecurefunc(TomTom, "RemoveWaypoint", QueueRefresh)
     hooksecurefunc(TomTom, "ReloadWaypoints", QueueRefresh)
     hooksecurefunc(TomTom, "ClearAllWaypoints", QueueRefresh)
@@ -3950,6 +4414,15 @@ WayBook:SetScript("OnEvent", function()
     -- Catches every path that sets the arrow: row clicks, /way, /cway and the
     -- autoqueue that fires when a waypoint is created.
     hooksecurefunc(TomTom, "SetCrazyArrow", TrackArrow)
+
+    -- Always the list, never a remembered page. The frame's own OnShow does the
+    -- same on every reopen; this covers the case where the window starts
+    -- hidden and the strip still needs an initial state.
+    --
+    -- WayBookDB.tab is left behind by older builds and no longer read. Cleared
+    -- rather than migrated, since nothing restores it now.
+    WayBookDB.tab = nil
+    SelectTab("list")
 
     if WayBookDB.shown then
         frame:Show()
