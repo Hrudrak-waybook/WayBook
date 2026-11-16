@@ -1,8 +1,19 @@
-## Interface: 120007, 120100
+# Retail builds first, then 16001 for WoW Forever (1.60.1). Forever belongs to
+# the mainline family, so the game reads this file on it rather than
+# WayBook.toc, and the packager tags the CurseForge upload for Forever off that
+# number. One list beats a separate _Camelot.toc: the packager does not
+# recognise a _Forever suffix at all.
+#
+# The retail numbers accumulate rather than getting replaced, the way TomTom's
+# own TOC does it. A client treats the addon as current when any listed number
+# matches its own, so dropping 12.0.7 and 12.1.0 would only strand anyone who
+# has not patched. 120105 is 12.1.5, added 2026-11-16 because the addon list
+# had started flagging WayBook out of date on a patched retail client.
+## Interface: 120007, 120100, 120105, 16001
 ## Title: WayBook
 ## Notes: Clickable directory of your saved TomTom waypoints, grouped and colored by zone
 ## Author: Hrudrak
-## Version: 1.27.0
+## Version: 1.28.0
 ## License: MIT
 ## IconTexture: Interface\AddOns\WayBook\WayBook-Icon.tga
 ## Dependencies: TomTom

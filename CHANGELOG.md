@@ -1,5 +1,19 @@
 # WayBook changelog
 
+## 1.28.0
+
+The list holds the waypoints you saved in WayBook and nothing else, and WayBook runs on WoW Forever.
+
+### New
+
+- WoW Forever is supported. Drop the `WayBook` folder into `World of Warcraft\_forever_\Interface\AddOns\`. Forever shares the Retail build. Nobody has loaded it on a live Forever client yet.
+- Expand-all and collapse-all buttons sit beside the sort arrow. One opens every group, the other folds every group down to its header. They grey out while grouping is off.
+
+### Fixed
+
+- Only waypoints saved through WayBook appear in the list. Questie sends its quest objectives to TomTom as ordinary saved waypoints, and those were filling the book alongside the places you chose to keep. A `/way` typed at the chat box stays out of the list too.
+- Retail no longer shows WayBook as out of date on patch 12.1.5.
+
 ## 1.27.0
 
 WayBook runs on Retail now, and the options have moved onto the main window.

@@ -13,8 +13,10 @@ does nothing on its own.
 **[Read the user guide](https://hrudrak-waybook.github.io/WayBook/)** for the
 full walkthrough.
 
-Runs on Retail and on Mists of Pandaria Classic. Both were tested on
-2026-08-16, against Retail 12.1.0 and MoP Classic 5.5.4.
+Runs on Retail, on WoW Forever and on Mists of Pandaria Classic. Retail and
+MoP Classic were tested on 2026-08-16, against Retail 12.1.0 and MoP Classic
+5.5.4. Forever shares the Retail build and has not been tested on a live
+Forever client yet.
 
 ## Features
 
@@ -56,7 +58,8 @@ different places.
 ## Installation
 
 Install through the CurseForge app, or drop the `WayBook` folder into
-`World of Warcraft\_retail_\Interface\AddOns\` or
+`World of Warcraft\_retail_\Interface\AddOns\`,
+`World of Warcraft\_forever_\Interface\AddOns\` or
 `World of Warcraft\_classic_\Interface\AddOns\`. Install TomTom first.
 
 ## Slash commands

@@ -4,6 +4,17 @@
 -- share it, right-click to edit its label, note and tags all in one window,
 -- and the red minus deletes it.
 -- Everything configurable lives in the Options window.
+--
+-- Clients: Retail, WoW Forever and Mists of Pandaria Classic. Forever wears
+-- Classic-looking version numbers on a mainline client, so the game reads
+-- WayBook_Mainline.toc there and the Retail code path is the one that runs.
+-- Every client API this file touches was checked against a dump of Forever
+-- 1.60.1 and is present. The five names that are gone on that client are
+-- GetFactionInfo, GetNumFactions, GetAddOnMetadata, KeyBindingFrame_LoadUI and
+-- InterfaceOptionsFrame_OpenToCategory, and each one sits behind a presence
+-- guard whose modern primary Forever does have. Nobody has played a character
+-- with this loaded on Forever yet, so treat anything outside those guards as
+-- unproven there.
 
 -- Keybinding display names. Set at the top of the file, before anything else
 -- runs, because the Key Bindings UI falls back to the raw binding name when
@@ -673,23 +684,31 @@ local function Collect()
     for mapID, group in pairs(store) do
         local zone = ZoneName(mapID)
         for _, uid in pairs(group) do
-            -- TomTom.waypoints holds other addons' live tracking alongside
-            -- saved places. Anything created with persistent = false is
-            -- somebody else's working state, torn down and rebuilt as it
-            -- updates - TomTom's own quest objective integration keeps exactly
-            -- one at a time and deletes the previous one whenever the closest
-            -- objective changes. A book of places you chose to keep should not
-            -- show rows that delete themselves, so they are skipped entirely
-            -- rather than filtered later: they never reach entryTotal, the
-            -- zone counts or the search.
+            -- The book holds what WayBook put there, and nothing else.
             --
-            -- AddWaypoint copies opts onto the stored uid (TomTom.lua:998), and
-            -- only persistent waypoints are written to waypointprofile
-            -- (TomTom.lua:1013), so this is TomTom's own distinction. Testing
-            -- against false rather than truthiness on purpose: a waypoint that
-            -- somehow carries no flag at all still shows, because hiding a
-            -- user's saved place is the worse failure.
-            if uid.persistent ~= false then
+            -- This used to filter on `persistent ~= false`, on the theory that
+            -- a persistent waypoint is a place someone chose to keep. That was
+            -- wrong in practice: Questie's quest objectives come through TomTom
+            -- as persistent waypoints, so they sat in the book alongside real
+            -- saves, collected visit records from the arrive watcher, and made
+            -- up 66 of the 124 entries on the test character. Dave's ruling on
+            -- 2026-09-10: "Only waypoints made from within WayBook should be
+            -- tracked." A bare /way typed at the chat box does not belong here
+            -- either.
+            --
+            -- `source` rather than `from`, and the difference matters: `source`
+            -- has been set on every WayBook add since 1.26.3, while `from`
+            -- only arrived in 1.27.0, so filtering on `from` would hide every
+            -- waypoint an existing user saved before that version. TomTom
+            -- copies opts onto the stored uid (TomTom.lua:995-1002) and writes
+            -- the whole uid to waypointprofile (TomTom.lua:1014), so a plain
+            -- string field survives a logout - which is also why
+            -- ApplyKeepOnArrivalToOwnWaypoints has been able to rely on this
+            -- same test all along.
+            --
+            -- Skipped entirely rather than filtered later: they never reach
+            -- entryTotal, the zone counts or the search.
+            if uid.source == "WayBook" then
                 local title = uid.title or "Unknown waypoint"
                 entryTotal = entryTotal + 1
                 local note = GetNote(uid)
@@ -1281,6 +1300,11 @@ AutoTag.CLASSIFICATION = {
 --
 -- Note C_Reputation.GetNumFactions does not exist on this client even though
 -- C_Reputation itself does, hence the fallback to the global.
+--
+-- Retail and Forever both have the namespaced call, and Forever has dropped
+-- the two globals this falls back to. So the order matters: the fallback is
+-- MoP Classic's alone, and it is never reached on the client where it would
+-- fail.
 function AutoTag.KnownFactionNames()
     local names = {}
     local getData = (C_Reputation and C_Reputation.GetFactionDataByIndex)
@@ -2504,8 +2528,19 @@ local function BuildShareUI()
     chatBtn:SetPoint("BOTTOM", shareFrame, "BOTTOM", 0, 20)
     chatBtn:SetText("Send to Chat")
     chatBtn:SetScript("OnClick", function()
-        local box = ChatEdit_ChooseBoxForSend()
-        ChatEdit_ActivateChat(box)
+        -- ChatFrameUtil is where these two live on a modern client. The
+        -- ChatEdit_ names still answer, but on Forever they are only present
+        -- while Blizzard's deprecation fallbacks are loaded, and Blizzard has
+        -- said those are going away. Prefer the new names, keep the old ones
+        -- for MoP Classic, and leave the copy box as the way out if neither
+        -- is there.
+        local choose = (ChatFrameUtil and ChatFrameUtil.ChooseBoxForSend)
+            or ChatEdit_ChooseBoxForSend
+        local activate = (ChatFrameUtil and ChatFrameUtil.ActivateChat)
+            or ChatEdit_ActivateChat
+        local box = choose and choose()
+        if not box then return end
+        if activate then activate(box) end
         box:Insert(shareFrame.chatLine or "")
     end)
     chatBtn:SetScript("OnEnter", function(self)
@@ -3522,6 +3557,10 @@ local function BuildOptionPages()
     -- Every call is wrapped: a route that is present but broken has to fall
     -- through to the next one rather than surfacing as a WayBook error, which
     -- is exactly what the first version of this did.
+    --
+    -- Forever answers on that same first branch. It carries the Settings
+    -- frame, and both legacy routes below have been removed there, so Settings
+    -- is the only path on that client that can open anything.
     local function OpenKeyBindings()
         if Settings and Settings.OpenToCategory then
             local id = Settings.KEYBINDINGS_CATEGORY_ID
@@ -3529,6 +3568,7 @@ local function BuildOptionPages()
             if pcall(Settings.OpenToCategory, "Keybindings") then return true end
         end
         -- Classic: the standalone frame is the only route, and it works there.
+        -- Gone on Forever, so this line is dead on that client.
         if KeyBindingFrame_LoadUI and pcall(KeyBindingFrame_LoadUI) then
             if KeyBindingFrame and ShowUIPanel
                 and pcall(ShowUIPanel, KeyBindingFrame) then
@@ -4040,7 +4080,70 @@ local function BuildUI()
     end)
     sortDirBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    frame.controls = { groupNoneCheck, groupZoneCheck, groupTagCheck, sortDirBtn }
+    -- Expand-all and collapse-all, sitting left of the sort arrow in that
+    -- reading order. The glyphs are the same plain "+" and "-" the group
+    -- headers already use, so these read as "do that to every header at once"
+    -- rather than as new iconography needing its own explanation.
+    --
+    -- Disabled rather than hidden when grouping is off: a row of controls that
+    -- rearranges itself as settings change is harder to aim at than one that
+    -- simply greys out. Enable/Disable rather than SetEnabled, which is not on
+    -- every widget on this client.
+    local function MakeFoldAll(name, glyph, collapse, tipTitle, tipBody, x)
+        local b = CreateFrame("Button", name, frame)
+        b:SetSize(22, 22)
+        b:SetPoint("TOPRIGHT", frame, "TOPRIGHT", x, K.GROUP_ROW_Y - 1)
+        b:SetHighlightTexture(
+            "Interface\\PaperDollInfoFrame\\UI-Character-Tab-Highlight", "ADD")
+
+        local label = b:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        label:SetPoint("CENTER", b, "CENTER", 0, 0)
+        label:SetText(glyph)
+
+        b.Sync = function()
+            if GroupMode() == "none" then
+                b:Disable()
+                label:SetTextColor(0.5, 0.5, 0.5)
+            else
+                b:Enable()
+                label:SetTextColor(1, 0.82, 0)
+            end
+        end
+
+        b:SetScript("OnClick", function()
+            -- `display` carries a header line for every group whether that
+            -- group is folded or not, so it is already the authoritative list
+            -- of what is on screen and needs no rebuild to walk.
+            for _, line in ipairs(display) do
+                if line.kind == "header" then
+                    SetCollapsed(line.groupKey, collapse)
+                end
+            end
+            WayBook:Refresh()
+        end)
+
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(tipTitle)
+            GameTooltip:AddLine(tipBody, 1, 1, 1, true)
+            if GroupMode() == "none" then
+                GameTooltip:AddLine("Needs a grouping - set one on the left.", 1, 0.3, 0.3, true)
+            end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
+    end
+
+    local expandAllBtn = MakeFoldAll("WayBookExpandAll", "+", false,
+        "Expand all", "Opens every group in the list.", -74)
+    local collapseAllBtn = MakeFoldAll("WayBookCollapseAll", "-", true,
+        "Collapse all", "Folds every group down to its header.", -52)
+
+    frame.controls = {
+        groupNoneCheck, groupZoneCheck, groupTagCheck, sortDirBtn,
+        expandAllBtn, collapseAllBtn,
+    }
 
     countText = frame:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
     countText:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -96)
@@ -4058,6 +4161,7 @@ local function BuildUI()
     -- Shown together on the List tab and hidden together on every other one.
     frame.listWidgets = {
         searchBox, groupNoneCheck, groupZoneCheck, groupTagCheck, sortDirBtn,
+        expandAllBtn, collapseAllBtn,
         countText, scrollFrame, addBtn, clearBtn,
     }
 
@@ -4087,7 +4191,10 @@ local function BuildUI()
     -- leaves the art stretching independently. That was the overlapping strip.
     --
     -- PanelTemplates_TabResize, SelectTab, SetTab and SetNumTabs are all
-    -- present on that client. Retail is unverified, so the calls stay guarded.
+    -- present on that client. Retail and Forever are both unverified, so the
+    -- calls stay guarded. Forever runs mainline FrameXML, which makes the
+    -- template very likely to be there, but nobody has watched these tabs draw
+    -- on it.
     local TABS = {
         { key = "list",    label = "List"    },
         { key = "general", label = "Options" },
